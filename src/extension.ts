@@ -303,6 +303,125 @@ function isAfterRelationalTypeParens(linePrefix: string): boolean {
   return /\b(?:Entity|Table)\s*\(\s*$/.test(linePrefix);
 }
 
+// ─────────────────────────── Type checking ────────────────────────────────────
+
+// Ordered so longer prefixes come first (TimestampTZ before Timestamp, etc.)
+const KDIC_TYPES = [
+  'Categorical', 'Numerical', 'TextList', 'Text',
+  'Date', 'TimestampTZ', 'Timestamp', 'Time',
+  'Table', 'Entity', 'Structure',
+];
+
+// Pre-build function → expected param types array from DERIVATION_RULES signatures.
+// 'any' = untyped param (e.g. Copy(value)), '...' = varargs marker.
+const PARAM_TYPE_MAP: Map<string, string[]> = (() => {
+  const typeAlt = KDIC_TYPES.join('|');
+  const typeRe = new RegExp('^(' + typeAlt + ')\\s+');
+  const map = new Map<string, string[]>();
+  for (const fn of DERIVATION_RULES) {
+    const inner = fn.signature.match(/\((.+)\)/)?.[1] ?? '';
+    const types = inner.split(',').map(part => {
+      part = part.trim();
+      if (part === '...') { return '...'; }
+      const m = typeRe.exec(part);
+      return m ? m[1] : 'any';
+    });
+    map.set(fn.label, types);
+  }
+  return map;
+})();
+
+function validateDocument(document: vscode.TextDocument, collection: vscode.DiagnosticCollection): void {
+  const diags: vscode.Diagnostic[] = [];
+  // Strip line comments while preserving character offsets
+  const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
+
+  const typeAlt = KDIC_TYPES.join('|');
+  // Matches: [Unused ] Type[(ClassName)] varName [= anything] ;
+  const varDeclRe = new RegExp(
+    '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\\s*(?:=[^;]*)?;',
+    'g',
+  );
+  // Matches: = FunctionName(args with no nested parentheses) — "simple case" only
+  const callRe = /=\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g;
+
+  let i = 0;
+  while (i < text.length) {
+    const braceOpen = text.indexOf('{', i);
+    if (braceOpen === -1) { break; }
+
+    // Find the matching closing brace
+    let depth = 1, j = braceOpen + 1;
+    while (j < text.length && depth > 0) {
+      if (text[j] === '{') { depth++; }
+      else if (text[j] === '}') { depth--; }
+      j++;
+    }
+
+    const blockStart = braceOpen + 1;
+    const blockText = text.slice(blockStart, j - 1);
+
+    // Collect variable types declared in this dictionary block
+    const vars = new Map<string, string>();
+    varDeclRe.lastIndex = 0;
+    let vm: RegExpExecArray | null;
+    while ((vm = varDeclRe.exec(blockText)) !== null) {
+      const raw = vm[2];
+      const name = raw.startsWith('`') ? raw.slice(1, -1).replace(/``/g, '`') : raw;
+      vars.set(name, vm[1]);
+    }
+
+    // Check each simple derivation rule call for argument type mismatches
+    callRe.lastIndex = 0;
+    let cm: RegExpExecArray | null;
+    while ((cm = callRe.exec(blockText)) !== null) {
+      const fnName = cm[1];
+      const paramTypes = PARAM_TYPE_MAP.get(fnName);
+      if (!paramTypes) { continue; }
+
+      const args = cm[2].split(',').map(a => a.trim()).filter(a => a.length > 0);
+      const hasVararg = paramTypes[paramTypes.length - 1] === '...';
+      const baseTypes = hasVararg ? paramTypes.slice(0, -1) : paramTypes;
+
+      let searchFrom = cm[0].indexOf('(') + 1;
+      for (let ai = 0; ai < args.length; ai++) {
+        const arg = args[ai];
+        const posInCall = cm[0].indexOf(arg, searchFrom);
+        if (posInCall !== -1) { searchFrom = posInCall + arg.length; }
+
+        // Only check plain identifiers (skip string literals, numbers, #Missing, …)
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(arg)) { continue; }
+
+        const expected =
+          ai < baseTypes.length ? baseTypes[ai]
+          : hasVararg && baseTypes.length > 0 ? baseTypes[baseTypes.length - 1]
+          : 'any';
+        if (expected === 'any' || expected === '...') { continue; }
+
+        const actual = vars.get(arg);
+        if (actual === undefined) { continue; } // variable not in this block — skip
+
+        if (actual !== expected) {
+          const argDocOffset = blockStart + cm.index + (posInCall !== -1 ? posInCall : cm[0].indexOf('(') + 1);
+          const start = document.positionAt(argDocOffset);
+          const range = new vscode.Range(start, start.translate(0, arg.length));
+          const diag = new vscode.Diagnostic(
+            range,
+            `'${arg}' is '${actual}' but '${fnName}' expects '${expected}' for argument ${ai + 1}.`,
+            vscode.DiagnosticSeverity.Error,
+          );
+          diag.source = 'kdic';
+          diags.push(diag);
+        }
+      }
+    }
+
+    i = j;
+  }
+
+  collection.set(document.uri, diags);
+}
+
 // ─────────────────────────── Extension activation ───────────────────────────
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -432,6 +551,25 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(hoverProvider);
+
+  // ── Diagnostic type checking ────────────────────────────────────────────
+  const diagnostics = vscode.languages.createDiagnosticCollection('kdic');
+  context.subscriptions.push(diagnostics);
+
+  for (const doc of vscode.workspace.textDocuments) {
+    if (doc.languageId === 'kdic') { validateDocument(doc, diagnostics); }
+  }
+  context.subscriptions.push(
+    vscode.workspace.onDidOpenTextDocument(doc => {
+      if (doc.languageId === 'kdic') { validateDocument(doc, diagnostics); }
+    }),
+    vscode.workspace.onDidChangeTextDocument(e => {
+      if (e.document.languageId === 'kdic') { validateDocument(e.document, diagnostics); }
+    }),
+    vscode.workspace.onDidCloseTextDocument(doc => {
+      diagnostics.delete(doc.uri);
+    }),
+  );
 }
 
 export function deactivate(): void {
