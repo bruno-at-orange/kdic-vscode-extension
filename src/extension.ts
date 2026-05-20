@@ -1,3 +1,48 @@
+/**
+ * Khiops Dictionary (.kdic) VS Code Extension
+ *
+ * Provides language support for Khiops dictionary files (.kdic), including:
+ *  - Syntax highlighting  (declarative, via kdic.tmLanguage.json)
+ *  - Context-aware IntelliSense completions
+ *  - Hover documentation for all keywords, types, and derivation rules
+ *  - Derivation rule type checking (argument types + return type vs declared type)
+ *  - Line-level grammar validation
+ *
+ * Grammar reference: https://khiops.org/api-docs/kdic/dictionary-files/
+ *
+ * ── Architecture ──────────────────────────────────────────────────────────────
+ *
+ * KEYWORDS / NATIVE_TYPES / ADVANCED_TYPES
+ *   Completion + hover data for the kdic language tokens (keywords and types).
+ *
+ * DERIVATION_RULES
+ *   Completion + hover + type-checking data for the ~100 built-in derivation
+ *   rules.  Each entry carries a human-readable `signature` and a `returnType`
+ *   used by the type checker.
+ *
+ * PARAM_TYPE_MAP  (derived from DERIVATION_RULES at load time)
+ *   Maps each rule name to its expected parameter types, parsed from `signature`.
+ *   '...' marks vararg rules (e.g. Sum, And); 'any' marks untyped params.
+ *
+ * RETURN_TYPE_MAP  (derived from DERIVATION_RULES at load time)
+ *   Maps each rule name to its return type string.  Union types such as
+ *   'Numerical|Categorical' (used by If) are split on '|' when checking.
+ *
+ * activate()
+ *   Registers the completion provider, hover provider, and diagnostic collection.
+ *
+ * validateDocument()
+ *   Runs type checking and grammar validation on an open .kdic document.
+ *
+ * ── Extending the extension ───────────────────────────────────────────────────
+ *
+ * Adding a derivation rule: append one entry to DERIVATION_RULES with the
+ *   correct `signature` (drives PARAM_TYPE_MAP) and `returnType` (drives
+ *   RETURN_TYPE_MAP).  No other changes needed.
+ *
+ * Adding a keyword or type: append one entry to KEYWORDS, NATIVE_TYPES, or
+ *   ADVANCED_TYPES.  Add the type name to KDIC_TYPES if it is a variable type.
+ */
 import * as vscode from 'vscode';
 
 // ─────────────────────────── Completion data ────────────────────────────────
@@ -336,18 +381,53 @@ const RETURN_TYPE_MAP: Map<string, string> = new Map(
   DERIVATION_RULES.map(fn => [fn.label, fn.returnType]),
 );
 
+/**
+ * Validates a .kdic document and populates the diagnostic collection.
+ *
+ * Three independent checks run for each dictionary block `{ ... }`:
+ *
+ * 1. **Return-type check** (Error)
+ *    The declared variable type must match the return type of its derivation
+ *    rule, for simple (non-nested) calls.
+ *    Example error: `Categorical x = TableCount(t)` — TableCount returns Numerical.
+ *
+ * 2. **Argument-type check** (Error)
+ *    Each plain-identifier argument to a derivation rule is looked up in the
+ *    current dictionary's variable map and compared with the expected parameter
+ *    type from PARAM_TYPE_MAP.
+ *    Silently skipped when the argument is a nested call, a string/number
+ *    literal, or a variable declared in a different dictionary (cross-table
+ *    secondary scope).
+ *    Example error: `TableCount(x)` where x is Categorical instead of Table.
+ *
+ * 3. **Line-level grammar check** (Warning / Error)
+ *    - (Error)   Non-comment, non-metadata content after `;`.
+ *    - (Warning) Lines that do not match any known kdic grammar pattern.
+ *
+ * Limitations:
+ *  - Only simple derivation calls are type-checked (no nested function calls).
+ *  - Cross-dictionary variable references (multi-table secondary scopes) are
+ *    silently skipped because those variables are not in the current block's map.
+ *  - String literals that contain `;` may confuse the `varDeclRe` pattern in
+ *    very unusual derivation rules.
+ */
 function validateDocument(document: vscode.TextDocument, collection: vscode.DiagnosticCollection): void {
   const diags: vscode.Diagnostic[] = [];
   // Strip line comments while preserving character offsets
   const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
 
   const typeAlt = KDIC_TYPES.join('|');
-  // Matches: [Unused ] Type[(ClassName)] varName [= anything] ;
+  // Matches a variable declaration inside a block:
+  //   [Unused ] Type[(ClassName)] varName [\[joinKey\]] [= anything] ;
+  // The optional [\[joinKey\]] group handles external-table join syntax:
+  //   Entity(Product) MyProduct [id_product] ;
   const varDeclRe = new RegExp(
-    '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\\s*(?:=[^;]*)?;',
+    '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\[[^\\]]*\\])?\\s*(?:=[^;]*)?;',
     'g',
   );
-  // Matches: = FunctionName(args with no nested parentheses) — "simple case" only
+  // Matches: = FunctionName(args with no nested parentheses) — "simple case" only.
+  // Nested calls like = Sum(EQ(a, b)) are intentionally excluded; the inner EQ
+  // call would require a leading '=' to be matched, which it does not have here.
   const callRe = /=\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g;
 
   let i = 0;
