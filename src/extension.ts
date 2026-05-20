@@ -400,6 +400,38 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(provider);
+
+  // ── Hover provider ──────────────────────────────────────────────────────
+  const ALL_ENTRIES: (CompletionEntry | FunctionEntry)[] = [
+    ...KEYWORDS,
+    ...NATIVE_TYPES,
+    ...ADVANCED_TYPES,
+    ...DERIVATION_RULES,
+  ];
+
+  const hoverProvider = vscode.languages.registerHoverProvider(
+    { language: 'kdic' },
+    {
+      provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover | undefined {
+        const range = document.getWordRangeAtPosition(position, /[A-Za-z_][A-Za-z0-9_]*/);
+        if (!range) { return undefined; }
+        const word = document.getText(range);
+        const entry = ALL_ENTRIES.find(e => e.label === word);
+        if (!entry) { return undefined; }
+
+        const isFn = 'signature' in entry;
+        const content = new vscode.MarkdownString();
+        if (isFn) {
+          content.appendCodeblock((entry as FunctionEntry).signature, 'kdic');
+        }
+        content.appendMarkdown(entry.documentation);
+
+        return new vscode.Hover(content, range);
+      },
+    },
+  );
+
+  context.subscriptions.push(hoverProvider);
 }
 
 export function deactivate(): void {

@@ -1,0 +1,38 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "${workspaceFolder}/node_modules/.bin/tsc",
+            "args": [
+                "-p",
+                "./"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$tsc"
+            ],
+            "detail": "Compile TypeScript"
+        },
+        {
+            "label": "watch",
+            "type": "shell",
+            "command": "${workspaceFolder}/node_modules/.bin/tsc",
+            "args": [
+                "-watch",
+                "-p",
+                "./"
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$tsc-watch"
+            ],
+            "isBackground": true,
+            "detail": "Compile TypeScript in watch mode"
+        }
+    ]
+}
