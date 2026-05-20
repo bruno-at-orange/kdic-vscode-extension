@@ -10,11 +10,12 @@
     "url": "https://github.com/KhiopsML/khiops.git"
   },
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.79.0"
   },
   "categories": [
     "Programming Languages"
   ],
+  "icon": "images/khiops.png",
   "main": "./out/extension.js",
   "activationEvents": [],
   "contributes": {
@@ -28,7 +29,11 @@
         "extensions": [
           ".kdic"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/khiops.png",
+          "dark": "./images/khiops.png"
+        }
       }
     ],
     "grammars": [
