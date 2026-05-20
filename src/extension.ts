@@ -452,6 +452,85 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
     i = j;
   }
 
+  // ── Line-level validation ────────────────────────────────────────────────
+  // Valid patterns outside a dictionary block (against trimmed, comment-stripped line)
+  const outsidePatterns = [
+    /^$/,                          // empty
+    /^#Khiops\b/,                  // file header: #Khiops <version>
+    /^(Root\s+)?Dictionary\b/,    // dictionary declaration (+ optional trailing metadata / {)
+    /^(<[^>]*>\s*)+$/,             // metadata-only line: <key>, <key=value>, <key="value">
+    /^\{$/,                        // opening brace alone
+    /^\};?$/,                      // closing brace (with optional ;)
+  ];
+  // Valid patterns inside a dictionary block
+  const insidePatterns: RegExp[] = [
+    /^$/,
+    /^\};?$/,
+    /^(<[^>]*>\s*)+$/,             // metadata-only line
+    // variable declaration: [Unused ] Type[(Class)] varName ...
+    new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+'),
+  ];
+
+  const strippedLines = text.split(/\r?\n/);
+  let lineDepth = 0;
+
+  for (let li = 0; li < document.lineCount; li++) {
+    const lineRaw = document.lineAt(li).text;
+    const trimmed = lineRaw.trimStart();
+
+    // Full-line comments are always valid
+    if (trimmed.startsWith('//')) { continue; }
+
+    // strippedLine has // comments replaced by spaces (same offsets as original)
+    const strippedLine = strippedLines[li] ?? '';
+    const effective = strippedLine.trim();
+
+    // Save depth before updating for braces on this line
+    const depthBefore = lineDepth;
+    for (const ch of effective) {
+      if (ch === '{') { lineDepth++; }
+      else if (ch === '}') { lineDepth = Math.max(0, lineDepth - 1); }
+    }
+
+    // Check 1: non-comment content after ';'
+    // Allowed after ';': metadata annotations <key>, <key=value>, <key="value">, then optional // comment
+    const semiIdx = strippedLine.indexOf(';');
+    if (semiIdx !== -1) {
+      const afterSemi = strippedLine.slice(semiIdx + 1);
+      // Valid prefix after ';': any number of whitespace + <...> metadata blocks
+      const validPrefixLen = (afterSemi.match(/^(\s*<[^>]*>)*\s*/)?.[0] ?? '').length;
+      const remainder = afterSemi.slice(validPrefixLen);
+      if (remainder.trim().length > 0) {
+        const leadingWs = remainder.length - remainder.trimStart().length;
+        const col = semiIdx + 1 + validPrefixLen + leadingWs;
+        const endCol = strippedLine.trimEnd().length;
+        const diag = new vscode.Diagnostic(
+          new vscode.Range(new vscode.Position(li, col), new vscode.Position(li, endCol)),
+          "Only metadata (<key>, <key=value>, <key=\"value\">) and // comments are allowed after ';'.",
+          vscode.DiagnosticSeverity.Error,
+        );
+        diag.source = 'kdic';
+        diags.push(diag);
+      }
+    }
+
+    // Check 2: line matches a known kdic grammar pattern
+    if (effective.length > 0) {
+      const patterns = depthBefore > 0 ? insidePatterns : outsidePatterns;
+      if (!patterns.some(p => p.test(effective))) {
+        const indentLen = lineRaw.length - trimmed.length;
+        const endCol = strippedLine.trimEnd().length;
+        const diag = new vscode.Diagnostic(
+          new vscode.Range(new vscode.Position(li, indentLen), new vscode.Position(li, endCol)),
+          'Line does not match kdic grammar. Use // for non-kdic content.',
+          vscode.DiagnosticSeverity.Warning,
+        );
+        diag.source = 'kdic';
+        diags.push(diag);
+      }
+    }
+  }
+
   collection.set(document.uri, diags);
 }
 
