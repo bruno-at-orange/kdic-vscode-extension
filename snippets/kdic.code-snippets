@@ -1,0 +1,134 @@
+{
+    "Dictionary block": {
+        "prefix": "dict",
+        "scope": "kdic",
+        "body": [
+            "// ${1:Dictionary description}",
+            "Dictionary ${2:Name}",
+            "{",
+            "\t${3:Categorical} ${4:variableName}\t;",
+            "\t$0",
+            "};"
+        ],
+        "description": "Declare a new Khiops Dictionary"
+    },
+    "Root Dictionary block": {
+        "prefix": "rootdict",
+        "scope": "kdic",
+        "body": [
+            "// ${1:Root dictionary description}",
+            "Root Dictionary ${2:Name} (${3:key})",
+            "{",
+            "\tCategorical\t${3:key}\t;",
+            "\t$0",
+            "};"
+        ],
+        "description": "Declare a Root Dictionary (main entity in multi-table schema)"
+    },
+    "Categorical variable": {
+        "prefix": "cat",
+        "scope": "kdic",
+        "body": [
+            "Categorical\t${1:varName}\t;$0"
+        ],
+        "description": "Declare a Categorical variable"
+    },
+    "Numerical variable": {
+        "prefix": "num",
+        "scope": "kdic",
+        "body": [
+            "Numerical\t${1:varName}\t;$0"
+        ],
+        "description": "Declare a Numerical variable"
+    },
+    "Unused variable": {
+        "prefix": "unused",
+        "scope": "kdic",
+        "body": [
+            "Unused\t${1:Categorical}\t${2:varName}\t;$0"
+        ],
+        "description": "Declare a variable marked as Unused"
+    },
+    "Derived variable": {
+        "prefix": "derived",
+        "scope": "kdic",
+        "body": [
+            "${1:Numerical}\t${2:varName}\t= ${3:Rule}($0)\t;"
+        ],
+        "description": "Declare a derived variable with a derivation rule"
+    },
+    "Entity relation": {
+        "prefix": "entity",
+        "scope": "kdic",
+        "body": [
+            "Entity(${1:DictionaryName})\t${2:varName}\t; // 0-1 relationship$0"
+        ],
+        "description": "Declare an Entity (0-1 relationship) variable"
+    },
+    "Table relation": {
+        "prefix": "table",
+        "scope": "kdic",
+        "body": [
+            "Table(${1:DictionaryName})\t${2:varName}\t; // 0-n relationship$0"
+        ],
+        "description": "Declare a Table (0-n relationship) variable"
+    },
+    "Date metadata": {
+        "prefix": "datefmt",
+        "scope": "kdic",
+        "body": [
+            "Date\t${1:varName}\t; <DateFormat=\"${2:YYYY-MM-DD}\">$0"
+        ],
+        "description": "Declare a Date variable with format metadata"
+    },
+    "Timestamp metadata": {
+        "prefix": "tsfmt",
+        "scope": "kdic",
+        "body": [
+            "Timestamp\t${1:varName}\t; <TimestampFormat=\"${2:YYYY-MM-DD HH:MM:SS}\">$0"
+        ],
+        "description": "Declare a Timestamp variable with format metadata"
+    },
+    "Table count derived": {
+        "prefix": "tabcount",
+        "scope": "kdic",
+        "body": [
+            "Numerical\t${1:count}\t= TableCount(${2:tableVar})\t;$0"
+        ],
+        "description": "Derived variable: count of records in a table"
+    },
+    "Table mean derived": {
+        "prefix": "tabmean",
+        "scope": "kdic",
+        "body": [
+            "Numerical\t${1:mean}\t= TableMean(${2:tableVar}, ${3:numVar})\t;$0"
+        ],
+        "description": "Derived variable: mean of a numerical variable over a table"
+    },
+    "Table selection derived": {
+        "prefix": "tabsel",
+        "scope": "kdic",
+        "body": [
+            "Table(${1:DictName})\t${2:subTable}\t= TableSelection(${3:tableVar}, ${4:EQc}(${5:catVar}, \"${6:value}\"))\t;$0"
+        ],
+        "description": "Derived variable: filtered sub-table"
+    },
+    "Multi-table star schema": {
+        "prefix": "startschema",
+        "scope": "kdic",
+        "body": [
+            "Root Dictionary ${1:Main} (${2:id})",
+            "{",
+            "\tCategorical\t${2:id}\t;",
+            "\tTable(${3:Secondary}) ${4:items}\t; // 0-n relationship",
+            "\t$0",
+            "};",
+            "",
+            "Dictionary ${3:Secondary} (${2:id})",
+            "{",
+            "\tCategorical\t${2:id}\t;",
+            "};"
+        ],
+        "description": "Multi-table star schema template"
+    }
+}

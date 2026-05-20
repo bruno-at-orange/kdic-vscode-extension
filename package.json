@@ -1,0 +1,59 @@
+{
+  "name": "khiops-kdic",
+  "displayName": "Khiops Dictionary (.kdic)",
+  "description": "Syntax highlighting and IntelliSense for Khiops dictionary files (.kdic)",
+  "version": "0.1.0",
+  "publisher": "khiopsml",
+  "license": "BSD-3-Clause-Clear",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KhiopsML/khiops.git"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "kdic",
+        "aliases": [
+          "Khiops Dictionary",
+          "kdic"
+        ],
+        "extensions": [
+          ".kdic"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kdic",
+        "scopeName": "source.kdic",
+        "path": "./syntaxes/kdic.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "kdic",
+        "path": "./snippets/kdic.code-snippets"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}

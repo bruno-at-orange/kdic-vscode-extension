@@ -1,0 +1,223 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "name": "Khiops Dictionary",
+    "scopeName": "source.kdic",
+    "fileTypes": [
+        "kdic"
+    ],
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#backtick-names"
+        },
+        {
+            "include": "#special-constants"
+        },
+        {
+            "include": "#metadata"
+        },
+        {
+            "include": "#dictionary-declaration"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#types-advanced"
+        },
+        {
+            "include": "#types-native"
+        },
+        {
+            "include": "#functions"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#punctuation"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "name": "comment.line.double-slash.kdic",
+            "match": "//.*$"
+        },
+        "strings": {
+            "name": "string.quoted.double.kdic",
+            "begin": "\"",
+            "end": "\"",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.kdic",
+                    "comment": "Doubled double-quote is the escape sequence inside kdic strings",
+                    "match": "\"\""
+                }
+            ]
+        },
+        "backtick-names": {
+            "name": "variable.other.kdic",
+            "begin": "`",
+            "end": "`",
+            "patterns": [
+                {
+                    "name": "constant.character.escape.kdic",
+                    "comment": "Doubled backtick is the escape sequence for backtick inside names",
+                    "match": "``"
+                }
+            ]
+        },
+        "special-constants": {
+            "name": "constant.language.kdic",
+            "match": "#Missing\\b"
+        },
+        "metadata": {
+            "name": "meta.annotation.kdic",
+            "begin": "<",
+            "end": ">",
+            "beginCaptures": {
+                "0": {
+                    "name": "punctuation.definition.annotation.begin.kdic"
+                }
+            },
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.definition.annotation.end.kdic"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#strings"
+                },
+                {
+                    "name": "keyword.operator.assignment.kdic",
+                    "match": "="
+                },
+                {
+                    "name": "entity.other.attribute-name.kdic",
+                    "match": "[A-Za-z_][A-Za-z0-9_]*"
+                }
+            ]
+        },
+        "dictionary-declaration": {
+            "comment": "Matches: [Root] Dictionary <Name> [(key1, key2)]",
+            "match": "\\b(Root\\s+)?(Dictionary)\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\(([^)]+)\\))?",
+            "captures": {
+                "1": {
+                    "name": "keyword.control.kdic"
+                },
+                "2": {
+                    "name": "keyword.control.kdic"
+                },
+                "3": {
+                    "name": "entity.name.class.kdic"
+                },
+                "4": {
+                    "name": "variable.parameter.kdic"
+                }
+            }
+        },
+        "keywords": {
+            "name": "keyword.control.kdic",
+            "match": "\\b(Unused)\\b"
+        },
+        "types-advanced": {
+            "comment": "Entity(DictName), Table(DictName), Structure(name) — parameterized types",
+            "begin": "\\b(Entity|Table|Structure)\\s*\\(",
+            "end": "\\)",
+            "beginCaptures": {
+                "1": {
+                    "name": "storage.type.kdic"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#backtick-names"
+                },
+                {
+                    "name": "entity.name.type.kdic",
+                    "match": "[A-Za-z_][A-Za-z0-9_]*"
+                }
+            ]
+        },
+        "types-native": {
+            "name": "storage.type.kdic",
+            "match": "\\b(Categorical|Text|Numerical|Date|TimestampTZ|Timestamp|Time|TextList)\\b"
+        },
+        "functions": {
+            "comment": "Derivation rule functions: capitalized names followed by '('",
+            "match": "\\b([A-Z][A-Za-z0-9]*)(?=\\s*\\()",
+            "captures": {
+                "1": {
+                    "name": "entity.name.function.kdic"
+                }
+            }
+        },
+        "numbers": {
+            "name": "constant.numeric.kdic",
+            "match": "\\b-?[0-9]+(?:\\.[0-9]+)?(?:[Ee][+-]?[0-9]+)?\\b"
+        },
+        "operators": {
+            "patterns": [
+                {
+                    "name": "keyword.operator.assignment.kdic",
+                    "match": "="
+                },
+                {
+                    "name": "keyword.operator.scope.kdic",
+                    "comment": "Scope operator for cross-table variable references",
+                    "match": "\\."
+                },
+                {
+                    "name": "keyword.operator.concatenation.kdic",
+                    "comment": "String constant concatenation operator",
+                    "match": "\\+"
+                },
+                {
+                    "name": "punctuation.accessor.square.begin.kdic",
+                    "match": "\\["
+                },
+                {
+                    "name": "punctuation.accessor.square.end.kdic",
+                    "match": "\\]"
+                }
+            ]
+        },
+        "punctuation": {
+            "patterns": [
+                {
+                    "name": "punctuation.terminator.statement.kdic",
+                    "match": ";"
+                },
+                {
+                    "name": "punctuation.section.block.begin.kdic",
+                    "match": "\\{"
+                },
+                {
+                    "name": "punctuation.section.block.end.kdic",
+                    "match": "\\}"
+                },
+                {
+                    "name": "punctuation.section.parens.begin.kdic",
+                    "match": "\\("
+                },
+                {
+                    "name": "punctuation.section.parens.end.kdic",
+                    "match": "\\)"
+                },
+                {
+                    "name": "punctuation.separator.comma.kdic",
+                    "match": ","
+                }
+            ]
+        }
+    }
+}
