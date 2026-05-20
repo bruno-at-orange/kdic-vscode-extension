@@ -331,6 +331,11 @@ const PARAM_TYPE_MAP: Map<string, string[]> = (() => {
   return map;
 })();
 
+// Pre-build function → return type from DERIVATION_RULES
+const RETURN_TYPE_MAP: Map<string, string> = new Map(
+  DERIVATION_RULES.map(fn => [fn.label, fn.returnType]),
+);
+
 function validateDocument(document: vscode.TextDocument, collection: vscode.DiagnosticCollection): void {
   const diags: vscode.Diagnostic[] = [];
   // Strip line comments while preserving character offsets
@@ -369,6 +374,34 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
       const raw = vm[2];
       const name = raw.startsWith('`') ? raw.slice(1, -1).replace(/``/g, '`') : raw;
       vars.set(name, vm[1]);
+    }
+
+    // Check declared variable type vs derivation rule return type
+    // Matches: [Unused ] DeclaredType[(Class)] varName = FunctionName(any args) ;
+    const derivedDeclRe = new RegExp(
+      '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(?:`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^()]*\\)',
+      'g',
+    );
+    derivedDeclRe.lastIndex = 0;
+    let dm: RegExpExecArray | null;
+    while ((dm = derivedDeclRe.exec(blockText)) !== null) {
+      const declaredType = dm[1];
+      const fnName = dm[2];
+      const returnType = RETURN_TYPE_MAP.get(fnName);
+      if (!returnType || returnType === 'any') { continue; }
+      // Allow union return types like 'Numerical|Categorical' (e.g. If)
+      if (returnType.split('|').includes(declaredType)) { continue; }
+      // Highlight the declared type token
+      const typeOffsetInMatch = dm[0].indexOf(declaredType);
+      const start = document.positionAt(blockStart + dm.index + typeOffsetInMatch);
+      const range = new vscode.Range(start, start.translate(0, declaredType.length));
+      const diag = new vscode.Diagnostic(
+        range,
+        `'${fnName}' returns '${returnType}' but variable is declared as '${declaredType}'.`,
+        vscode.DiagnosticSeverity.Error,
+      );
+      diag.source = 'kdic';
+      diags.push(diag);
     }
 
     // Check each simple derivation rule call for argument type mismatches
