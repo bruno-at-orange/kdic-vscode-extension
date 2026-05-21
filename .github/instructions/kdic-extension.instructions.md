@@ -1,6 +1,6 @@
 ---
-description: "Use when adding derivation rules, types, grammar patterns, diagnostic checks, completions, hover docs, or any other feature to the kdic VS Code extension. Covers exact patterns for src/extension.ts."
-applyTo: "src/extension.ts"
+description: "Use when adding derivation rules, types, grammar patterns, diagnostic checks, completions, hover docs, or any other feature to the kdic VS Code extension. Covers exact patterns for src/extension.ts and src/validator.ts."
+applyTo: "src/**"
 ---
 
 # Extending the kdic Extension
@@ -28,23 +28,25 @@ Append one entry to `DERIVATION_RULES`. **No other changes are needed** — `PAR
 
 ## Adding a type
 
-1. Add to `NATIVE_TYPES` or `ADVANCED_TYPES` (completion + hover).
-2. Insert into `KDIC_TYPES` at the **correct position** — longer/more-specific names must
+1. Add to `NATIVE_TYPES` or `ADVANCED_TYPES` in `extension.ts` (completion + hover).
+2. Insert into `KDIC_TYPES` in `validator.ts` at the **correct position** — longer/more-specific names must
    precede shorter ones (`TimestampTZ` before `Timestamp`, `TextList` before `Text`).
 3. All regexes that use `typeAlt` pick up the new type automatically.
 
 ## Adding a grammar pattern
 
 Patterns are tested against the **trimmed, comment-stripped** line content.
+All grammar patterns live in `src/validator.ts` inside the `validate()` function.
 
-- **Outside a dictionary block** → add to `outsidePatterns` in `validateDocument()`.
+- **Outside a dictionary block** → add to `outsidePatterns`.
 - **Inside a dictionary block** → add to `insidePatterns`.
 
 Keep each pattern focused on one concern.
 
 ## Adding a diagnostic check in the block loop
 
-Insert code inside the `while (i < text.length)` loop **after** the `vars` Map is populated.
+Insert code inside the `while (i < text.length)` loop in `src/validator.ts`
+**after** the `vars` Map is populated.
 
 | Variable | Meaning |
 |---|---|
@@ -54,11 +56,11 @@ Insert code inside the `while (i < text.length)` loop **after** the `vars` Map i
 | `knownDicts` | `Set<string>` of all dictionary names in the file |
 | `document.positionAt(blockStart + offset)` | Convert block offset → document position |
 
-Always set `diag.source = 'kdic'` on every new diagnostic.
+Push diagnostics via `diags.push({ line, col, endCol, severity: Severity.Error, message })`.
 
 ## Adding a diagnostic check in the line loop
 
-Insert inside the `for (let li …)` loop. Useful context variables:
+Insert inside the `for (let li …)` loop in `src/validator.ts`. Useful context variables:
 
 | Variable | Meaning |
 |---|---|
