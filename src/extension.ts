@@ -474,6 +474,46 @@ const DERIVATION_RULES: FunctionEntry[] = [
   { label: 'PredictedPartIndex', kind: vscode.CompletionItemKind.Function, detail: 'coclustering', returnType: 'Numerical', signature: 'PredictedPartIndex(Structure(DataGridDeployment) deployment)', documentation: 'Computes the index of the closest part of the deployed variable in a coclustering deployment.' },
   { label: 'PredictedPartDistances', kind: vscode.CompletionItemKind.Function, detail: 'coclustering', returnType: 'Structure', signature: 'PredictedPartDistances(Structure(DataGridDeployment) deployment)', documentation: 'Computes the distance to all parts of the deployed variable in a coclustering deployment.' },
   { label: 'PredictedPartFrequenciesAt', kind: vscode.CompletionItemKind.Function, detail: 'coclustering', returnType: 'Structure', signature: 'PredictedPartFrequenciesAt(Structure(DataGridDeployment) deployment, Numerical inputVariableIndex)', documentation: 'Computes the aggregated frequencies on the parts of the specified input variable in a coclustering deployment.' },
+  // ── Basic Sparse rules ───────────────────────────────────────────────────
+  { label: 'CopyBlock', kind: vscode.CompletionItemKind.Function, detail: 'basic sparse', returnType: 'Structure', signature: 'CopyBlock(Block(Numerical) valueBlock)', documentation: 'Copies a block of Numerical variables. The input and output blocks must share the same VarKey type (integer or alphanumeric), and each VarKey present in both blocks is copied.' },
+  { label: 'CopyBlockC', kind: vscode.CompletionItemKind.Function, detail: 'basic sparse', returnType: 'Structure', signature: 'CopyBlockC(Block(Categorical) valueBlock)', documentation: 'Copies a block of Categorical variables. The input and output blocks must share the same VarKey type.' },
+  { label: 'GetBlock', kind: vscode.CompletionItemKind.Function, detail: 'basic sparse', returnType: 'Structure', signature: 'GetBlock(Block(Numerical) valueBlock)', documentation: 'Accesses a block of Numerical variables from an Entity variable, bringing it into the primary dictionary.' },
+  { label: 'GetBlockC', kind: vscode.CompletionItemKind.Function, detail: 'basic sparse', returnType: 'Structure', signature: 'GetBlockC(Block(Categorical) valueBlock)', documentation: 'Accesses a block of Categorical variables from an Entity variable, bringing it into the primary dictionary.' },
+  // ── Text Sparse rules ────────────────────────────────────────────────────
+  { label: 'TextWords', kind: vscode.CompletionItemKind.Function, detail: 'text sparse', returnType: 'Structure', signature: 'TextWords(Text value)', documentation: 'Tokenizes a Text value into a bag of words. Separator or control characters act as delimiters; each token is a sequence of punctuation or of other characters. Each variable in the block has a VarKey equal to the word it counts.' },
+  { label: 'TextNgrams', kind: vscode.CompletionItemKind.Function, detail: 'text sparse', returnType: 'Structure', signature: 'TextNgrams(Text value)', documentation: 'Tokenizes a Text value into a bag of byte n-grams (1-gram to 8-gram). Each variable in the block has a VarKey equal to the n-gram it counts.' },
+  { label: 'TextTokens', kind: vscode.CompletionItemKind.Function, detail: 'text sparse', returnType: 'Structure', signature: 'TextTokens(Text value)', documentation: 'Tokenizes a Text value into a bag of tokens using the blank character as delimiter. Assumes the text has already been preprocessed (e.g. lemmatized). Each variable has a VarKey equal to the token it counts.' },
+  { label: 'TextListWords', kind: vscode.CompletionItemKind.Function, detail: 'text sparse', returnType: 'Structure', signature: 'TextListWords(TextList value)', documentation: 'Applies TextWords tokenization to each Text value in a TextList, producing a combined bag of words.' },
+  { label: 'TextListNgrams', kind: vscode.CompletionItemKind.Function, detail: 'text sparse', returnType: 'Structure', signature: 'TextListNgrams(TextList value)', documentation: 'Applies TextNgrams tokenization to each Text value in a TextList, producing a combined bag of n-grams.' },
+  { label: 'TextListTokens', kind: vscode.CompletionItemKind.Function, detail: 'text sparse', returnType: 'Structure', signature: 'TextListTokens(TextList value)', documentation: 'Applies TextTokens tokenization to each Text value in a TextList, producing a combined bag of tokens.' },
+  // ── Preparation Sparse rules ─────────────────────────────────────────────
+  { label: 'DataGridBlock', kind: vscode.CompletionItemKind.Function, detail: 'preparation sparse', returnType: 'Structure', signature: 'DataGridBlock(Structure(ValueSet) varKeys, Structure(DataGrid) dataGrid1, ...)', documentation: 'Builds a `DataGridBlock` from a list of VarKeys and a corresponding list of DataGrid preparation models. The number of VarKeys must equal the number of DataGrids. VarKeys can be integers (ValueSet) or alphanumeric (ValueSetC).' },
+  { label: 'DataGridStatsBlock', kind: vscode.CompletionItemKind.Function, detail: 'preparation sparse', returnType: 'Structure', signature: 'DataGridStatsBlock(Structure(DataGridBlock) dataGridBlock, Block(Numerical) valueBlock)', documentation: 'Applies each DataGrid model in a `DataGridBlock` to the corresponding block variable (matched by VarKey), producing a sparse block of preparation statistics. Equivalent to DataGridStats applied to a sparse block.' },
+  { label: 'DataGridCellBlock', kind: vscode.CompletionItemKind.Function, detail: 'preparation sparse', returnType: 'Structure', signature: 'DataGridCellBlock(Structure(DataGridBlock) dataGridBlock, Block(Numerical) valueBlock)', documentation: 'Builds a sparse block of cell indices from a `DataGridBlock` and a block of variables. Equivalent to CellIndex applied to each variable in a sparse block.' },
+  // ── Table Partition rules ────────────────────────────────────────────────
+  { label: 'Partition', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'Partition(Structure partition1, ...)', documentation: 'Builds a multivariate `Partition` as the cross-product of univariate partitions. Parameters must be univariate partitions: IntervalBounds, ValueGroups, ValueSetC, or ValueSet.' },
+  { label: 'TablePartition', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartition(Table table, Structure(Partition) partition, ...)', documentation: 'Builds a block of Table sub-parts from a secondary Table and a Partition specification. The block is potentially sparse — only non-empty parts are managed. Additional value arguments specify the partition variables from the secondary table.' },
+  { label: 'TablePartitionCount', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionCount(Block(Table) tableParts)', documentation: 'Number of records per part in a block of Table parts produced by TablePartition.' },
+  { label: 'TablePartitionCountDistinct', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionCountDistinct(Block(Table) tableParts, Categorical value)', documentation: 'Number of distinct values per table part for a given Categorical variable in the secondary Table.' },
+  { label: 'TablePartitionEntropy', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionEntropy(Block(Table) tableParts, Categorical value)', documentation: 'Entropy of the value distribution per table part for a given Categorical variable in the secondary Table.' },
+  { label: 'TablePartitionMode', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionMode(Block(Table) tableParts, Categorical value)', documentation: 'Most frequent value per table part for a given Categorical variable in the secondary Table.' },
+  { label: 'TablePartitionModeAt', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionModeAt(Block(Table) tableParts, Categorical value, Numerical rank)', documentation: 'Ith most frequent value per table part for a given Categorical variable in the secondary Table.' },
+  { label: 'TablePartitionMean', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionMean(Block(Table) tableParts, Numerical value)', documentation: 'Mean value per table part for a given Numerical variable in the secondary Table.' },
+  { label: 'TablePartitionStdDev', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionStdDev(Block(Table) tableParts, Numerical value)', documentation: 'Standard deviation per table part for a given Numerical variable in the secondary Table.' },
+  { label: 'TablePartitionMedian', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionMedian(Block(Table) tableParts, Numerical value)', documentation: 'Median value per table part for a given Numerical variable in the secondary Table.' },
+  { label: 'TablePartitionMin', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionMin(Block(Table) tableParts, Numerical value)', documentation: 'Minimum value per table part for a given Numerical variable in the secondary Table.' },
+  { label: 'TablePartitionMax', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionMax(Block(Table) tableParts, Numerical value)', documentation: 'Maximum value per table part for a given Numerical variable in the secondary Table.' },
+  { label: 'TablePartitionSum', kind: vscode.CompletionItemKind.Function, detail: 'table partition', returnType: 'Structure', signature: 'TablePartitionSum(Block(Table) tableParts, Numerical value)', documentation: 'Sum of values per table part for a given Numerical variable in the secondary Table.' },
+  // ── Table Block rules ────────────────────────────────────────────────────
+  { label: 'TableBlockCountDistinct', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockCountDistinct(Table table, Block(Categorical) valueBlock)', documentation: 'Number of distinct values per variable of a Categorical block defined in the secondary Table.' },
+  { label: 'TableBlockEntropy', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockEntropy(Table table, Block(Categorical) valueBlock)', documentation: 'Entropy of the value distribution per variable of a Categorical block defined in the secondary Table.' },
+  { label: 'TableBlockMode', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockMode(Table table, Block(Categorical) valueBlock)', documentation: 'Most frequent value per variable of a Categorical block defined in the secondary Table.' },
+  { label: 'TableBlockMean', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockMean(Table table, Block(Numerical) valueBlock)', documentation: 'Mean value per variable of a Numerical block defined in the secondary Table.' },
+  { label: 'TableBlockStdDev', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockStdDev(Table table, Block(Numerical) valueBlock)', documentation: 'Standard deviation per variable of a Numerical block defined in the secondary Table.' },
+  { label: 'TableBlockMedian', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockMedian(Table table, Block(Numerical) valueBlock)', documentation: 'Median value per variable of a Numerical block defined in the secondary Table.' },
+  { label: 'TableBlockMin', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockMin(Table table, Block(Numerical) valueBlock)', documentation: 'Minimum value per variable of a Numerical block defined in the secondary Table.' },
+  { label: 'TableBlockMax', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockMax(Table table, Block(Numerical) valueBlock)', documentation: 'Maximum value per variable of a Numerical block defined in the secondary Table.' },
+  { label: 'TableBlockSum', kind: vscode.CompletionItemKind.Function, detail: 'table block', returnType: 'Structure', signature: 'TableBlockSum(Table table, Block(Numerical) valueBlock)', documentation: 'Sum of values per variable of a Numerical block defined in the secondary Table.' },
 ];
 
 // ─────────────────────────── Helper functions ────────────────────────────────
@@ -692,8 +732,7 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
 
         const expected =
           ai < baseTypes.length ? baseTypes[ai]
-          : hasVararg && baseTypes.length > 0 ? baseTypes[baseTypes.length - 1]
-          : 'any';
+          : 'any'; // '...' varargs: positions beyond explicit params are unchecked
         if (expected === 'any' || expected === '...') { continue; }
 
         const actual = vars.get(arg);
@@ -719,25 +758,37 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
 
   // ── Line-level validation ────────────────────────────────────────────────
   // Valid patterns outside a dictionary block (against trimmed, comment-stripped line)
+  // Metadata-only line: one or more <key>, <key=value>, or <key="..."> tags.
+  // The quoted-value branch allows '>' inside the double-quoted string.
+  const metaOnlyRe = /^(<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?>\ *)+$/;
   const outsidePatterns = [
     /^$/,                          // empty
     /^#Khiops\b/,                  // file header: #Khiops <version>
     /^(Root\s+)?Dictionary\b/,    // dictionary declaration (+ optional trailing metadata / {)
-    /^(<[^>]*>\s*)+$/,             // metadata-only line: <key>, <key=value>, <key="value">
+    metaOnlyRe,                    // metadata-only line: <key>, <key=value>, <key="value">
+    /^\([^)]*\)\s*$/,              // dictionary key list on its own line: (KeyField1, KeyField2)
     /^\{$/,                        // opening brace alone
     /^\};?$/,                      // closing brace (with optional ;)
   ];
   // Valid patterns inside a dictionary block
   const insidePatterns: RegExp[] = [
     /^$/,
+    /^\{$/,                        // sparse rules sub-block opening
+    /^\}\s+\S/,                    // sparse rules sub-block closer: } BlockName [= derivation] ;
     /^\};?$/,
-    /^(<[^>]*>\s*)+$/,             // metadata-only line
+    metaOnlyRe,                    // metadata-only line
     // variable declaration: [Unused ] Type[(Class)] varName ...
     new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+'),
   ];
 
   const strippedLines = text.split(/\r?\n/);
   let lineDepth = 0;
+  // parenDepth tracks unclosed '(' from previous lines (multi-line derivations).
+  // When > 0, the current line is a derivation continuation — skip grammar check.
+  let parenDepth = 0;
+  // prevLineEndsWithAssign: true when the previous (non-comment) line inside a block
+  // ended with '=', meaning this line is the start of a split derivation.
+  let prevLineEndsWithAssign = false;
 
   for (let li = 0; li < document.lineCount; li++) {
     const lineRaw = document.lineAt(li).text;
@@ -752,18 +803,68 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
 
     // Save depth before updating for braces on this line
     const depthBefore = lineDepth;
-    for (const ch of effective) {
-      if (ch === '{') { lineDepth++; }
-      else if (ch === '}') { lineDepth = Math.max(0, lineDepth - 1); }
+    // Track braces, skipping content inside backtick-quoted names and double-quoted strings
+    {
+      let inBt = false, inDq = false;
+      for (let k = 0; k < effective.length; k++) {
+        const ch = effective[k];
+        if (inBt) { if (ch === '`') { inBt = false; } }
+        else if (inDq) {
+          if (ch === '"') {
+            if (k + 1 < effective.length && effective[k + 1] === '"') { k++; } // escaped ""
+            else { inDq = false; }
+          }
+        }
+        else if (ch === '`') { inBt = true; }
+        else if (ch === '"') { inDq = true; }
+        else if (ch === '{') { lineDepth++; }
+        else if (ch === '}') { lineDepth = Math.max(0, lineDepth - 1); }
+      }
     }
+    // Reset paren/assign trackers when we return to the top level
+    if (lineDepth === 0) { parenDepth = 0; prevLineEndsWithAssign = false; }
 
     // Check 1: non-comment content after ';'
     // Allowed after ';': metadata annotations <key>, <key=value>, <key="value">, then optional // comment
-    const semiIdx = strippedLine.indexOf(';');
+    // Find the LAST ';' that is not inside a backtick-quoted identifier or a double-quoted string literal.
+    const semiIdx = (() => {
+      let inBt = false, inDq = false, last = -1;
+      for (let k = 0; k < strippedLine.length; k++) {
+        const ch = strippedLine[k];
+        if (inBt) { if (ch === '`') { inBt = false; } }
+        else if (inDq) {
+          if (ch === '"') {
+            if (k + 1 < strippedLine.length && strippedLine[k + 1] === '"') { k++; } // escaped ""
+            else { inDq = false; }
+          }
+        } else {
+          if (ch === '`') { inBt = true; }
+          else if (ch === '"') { inDq = true; }
+          else if (ch === ';') { last = k; }
+        }
+      }
+      return last;
+    })();
     if (semiIdx !== -1) {
       const afterSemi = strippedLine.slice(semiIdx + 1);
-      // Valid prefix after ';': any number of whitespace + <...> metadata blocks
-      const validPrefixLen = (afterSemi.match(/^(\s*<[^>]*>)*\s*/)?.[0] ?? '').length;
+      // Valid prefix after ';': any number of whitespace + <key[=value]> metadata blocks.
+      // Quoted values (key="val") may contain '>' and use "" to escape a literal ".      
+      const metaOne = /<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?>/g;
+      let mEnd = 0;
+      {
+        const ws = afterSemi.match(/^\s*/)?.[0] ?? '';
+        let pos = ws.length;
+        metaOne.lastIndex = pos;
+        let m;
+        while ((m = metaOne.exec(afterSemi)) !== null && m.index === pos) {
+          pos = metaOne.lastIndex;
+          const trailingWs = afterSemi.slice(pos).match(/^\s*/)?.[0] ?? '';
+          pos += trailingWs.length;
+          metaOne.lastIndex = pos;
+        }
+        mEnd = pos;
+      }
+      const validPrefixLen = mEnd;
       const remainder = afterSemi.slice(validPrefixLen);
       if (remainder.trim().length > 0) {
         const leadingWs = remainder.length - remainder.trimStart().length;
@@ -779,8 +880,10 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
       }
     }
 
-    // Check 2: line matches a known kdic grammar pattern
-    if (effective.length > 0) {
+    // Check 2: line matches a known kdic grammar pattern.
+    // Skip continuation lines of a multi-line derivation (unmatched '(' from a previous line,
+    // or the line immediately following a declaration ending with '=').
+    if (effective.length > 0 && parenDepth === 0 && !prevLineEndsWithAssign) {
       const patterns = depthBefore > 0 ? insidePatterns : outsidePatterns;
       if (!patterns.some(p => p.test(effective))) {
         const indentLen = lineRaw.length - trimmed.length;
@@ -794,6 +897,30 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
         diags.push(diag);
       }
     }
+
+    // Update parenDepth: count net unquoted '(' minus ')' on this line
+    // (only meaningful inside a dictionary block)
+    if (depthBefore > 0) {
+      let netParens = 0, inBtP = false, inDqP = false;
+      for (let k = 0; k < effective.length; k++) {
+        const ch = effective[k];
+        if (inBtP) { if (ch === '`') { inBtP = false; } }
+        else if (inDqP) {
+          if (ch === '"') {
+            if (k + 1 < effective.length && effective[k + 1] === '"') { k++; }
+            else { inDqP = false; }
+          }
+        } else {
+          if (ch === '`') { inBtP = true; }
+          else if (ch === '"') { inDqP = true; }
+          else if (ch === '(') { netParens++; }
+          else if (ch === ')') { netParens--; }
+        }
+      }
+      parenDepth = Math.max(0, parenDepth + netParens);
+    }
+    // Track whether this line ends with '=' (split derivation: next line has the RHS)
+    prevLineEndsWithAssign = depthBefore > 0 && effective.trimEnd().endsWith('=');
   }
 
   collection.set(document.uri, diags);

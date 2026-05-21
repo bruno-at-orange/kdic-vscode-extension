@@ -12,7 +12,7 @@ VS Code extension providing syntax highlighting, IntelliSense, hover documentati
 - **Native types**: `Categorical`, `Numerical`, `Text`, `Date`, `Time`, `Timestamp`, `TimestampTZ`, `TextList`
 - **Advanced types**: `Entity(...)`, `Table(...)`, `Structure(...)`
 - **Derivation rule function calls**
-- **String literals** (double-quoted, with `""` escape) and **backtick-quoted names**
+- **String literals** (double-quoted, with `""` escape) and **backtick-quoted identifiers** (variable names and computed table references)
 - **Comments** (`// ...`) — line comments only, no block comments
 - **Metadata annotations** (`<key>`, `<key=value>`, `<key="value">`)
 - **Special constant** `#Missing`
@@ -29,7 +29,7 @@ Context-aware completions:
 | After `=` (derivation)      | All derivation rule functions with signatures and documentation              |
 | After `Entity(` or `Table(` | Dictionary names declared in the current file                                |
 
-**Covered rule categories**: Numerical/Categorical comparisons, Logical operators, Data conversion, Math, String, Date/Time/Timestamp/TimestampTZ, Table aggregation, Table management, Vector, Hash Map, Data preparation, Predictor (Classifier/Regressor), Interpretation, Reinforcement, Coclustering.
+**Covered rule categories**: Numerical/Categorical comparisons, Logical operators, Data conversion, Math, String, Date/Time/Timestamp/TimestampTZ, Table aggregation, Table management, Vector, Hash Map, Data preparation, Predictor (Classifier/Regressor), Interpretation, Reinforcement, Coclustering, Sparse blocks (CopyBlock, GetBlock), Text sparse (TextWords, TextNgrams, TextTokens, …), Preparation sparse (DataGridBlock, DataGridStatsBlock, DataGridCellBlock), Table partition (Partition, TablePartition, TablePartitionCount, …), Table block (TableBlockMean, TableBlockEntropy, …).
 
 ### Hover Documentation
 
@@ -57,6 +57,14 @@ Real-time diagnostics for structural grammar issues:
 - **(Warning)** Lines that do not match any known kdic grammar pattern — use `//` to mark non-kdic content
 
 Allowed after `;`: metadata annotations `<key>`, `<key=value>`, `<key="value">` and `//` comments.
+
+Recognised structural patterns include:
+- Dictionary headers with optional key list: `Root Dictionary Foo (key1, key2)`
+- Key list on its own line: `(SampleId)`
+- Variable declarations: `[Unused] Type[(Class)] name [= derivation] ;`
+- Sparse sub-block syntax: `{` / `} BlockName [= derivation] ;`
+- Multi-line derivations (continuation lines after unclosed `(` or trailing `=`)
+- Metadata-only lines: `<key>`, `<key=value>`, `<key="value with > inside">`
 
 ### Snippets
 
