@@ -106,7 +106,7 @@ export function buildTypeMaps(
   rules: ReadonlyArray<{ label: string; returnType: string; signature: string }>,
 ): { paramTypeMap: ParamTypeMap; returnTypeMap: ReturnTypeMap } {
   const typeAlt = KDIC_TYPES.join('|');
-  const typeRe = new RegExp('^(' + typeAlt + ')\\s+');
+  const typeRe = new RegExp('^(?:Block\\((' + typeAlt + ')\\)|(' + typeAlt + '))\\s+');
   const paramTypeMap: ParamTypeMap = new Map();
   const returnTypeMap: ReturnTypeMap = new Map();
   for (const fn of rules) {
@@ -116,7 +116,9 @@ export function buildTypeMaps(
       part = part.trim();
       if (part === '...') { return '...'; }
       const m = typeRe.exec(part);
-      return m ? m[1] : 'any';
+      if (!m) { return 'any'; }
+      // m[1] = inner type of Block(Type), m[2] = plain Type
+      return m[1] ? `Block(${m[1]})` : m[2];
     });
     paramTypeMap.set(fn.label, types);
   }
@@ -294,6 +296,12 @@ export function validate(
       const args = cm[2].split(',').map(a => a.trim()).filter(a => a.length > 0);
       const hasVararg = paramTypes[paramTypes.length - 1] === '...';
       const baseTypes = hasVararg ? paramTypes.slice(0, -1) : paramTypes;
+      // When the first parameter expects Table/Entity (directly or via
+      // Block(Table)), subsequent arguments reference variables from the
+      // secondary table — not from this block.
+      const firstType = baseTypes.length > 0 ? baseTypes[0] : '';
+      const isCrossTableFn = firstType === 'Table' || firstType === 'Entity'
+        || firstType === 'Block(Table)' || firstType === 'Block(Entity)';
 
       let searchFrom = cm[0].indexOf('(') + 1;
       for (let ai = 0; ai < args.length; ai++) {
@@ -306,10 +314,23 @@ export function validate(
         const expected =
           ai < baseTypes.length ? baseTypes[ai]
           : 'any';
-        if (expected === 'any' || expected === '...') { continue; }
+        if (expected === 'any' || expected === '...' || expected.startsWith('Block(')) { continue; }
 
         const actual = vars.get(arg);
-        if (actual === undefined) { continue; }
+        if (actual === undefined) {
+          // Skip cross-table arguments (positions after a Table/Entity first param)
+          if (isCrossTableFn && ai > 0) { continue; }
+          // Variable not declared in this block — warn (likely a typo)
+          const argDocOffset = blockStart + cm.index + (posInCall !== -1 ? posInCall : cm[0].indexOf('(') + 1);
+          const pos = document.positionAt(argDocOffset);
+          diags.push({
+            line: pos.line, col: pos.character,
+            endCol: pos.character + arg.length,
+            severity: Severity.Warning,
+            message: `'${arg}' is not declared in this dictionary.`,
+          });
+          continue;
+        }
 
         if (actual !== expected) {
           const argDocOffset = blockStart + cm.index + (posInCall !== -1 ? posInCall : cm[0].indexOf('(') + 1);

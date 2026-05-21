@@ -33,7 +33,7 @@ const RETURN_TYPE_MAP = new Map();
 const PARAM_TYPE_MAP  = new Map();
 
 const typeAlt = KDIC_TYPES.join('|');
-const typeRe  = new RegExp('^(' + typeAlt + ')\\s+');
+const typeRe  = new RegExp('^(?:Block\\((' + typeAlt + ')\\)|(' + typeAlt + '))\\s+');
 
 for (const line of src.split('\n')) {
   const m = line.match(/label:\s*'([^']+)'.*?returnType:\s*'([^']+)'.*?signature:\s*'([^']+)'/);
@@ -47,7 +47,8 @@ for (const line of src.split('\n')) {
     part = part.trim();
     if (part === '...') return '...';
     const tm = typeRe.exec(part);
-    return tm ? tm[1] : 'any';
+    if (!tm) return 'any';
+    return tm[1] ? `Block(${tm[1]})` : tm[2];
   });
   PARAM_TYPE_MAP.set(label, paramTypes);
 }
