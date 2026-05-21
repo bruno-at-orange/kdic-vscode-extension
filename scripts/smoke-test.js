@@ -4,8 +4,9 @@
 // Runs the kdic validation logic (grammar + type checks) against every .kdic
 // file found under a target directory tree and reports any diagnostics.
 //
-// The validation rules are read live from src/extension.ts so the script is
-// always in sync with the extension — no duplication needed.
+// The type list (KDIC_TYPES) and derivation rules (RETURN_TYPE_MAP / PARAM_TYPE_MAP)
+// are extracted live from src/extension.ts at startup. The validation logic itself
+// is a manual port and must be kept in sync with extension.ts by hand.
 //
 // Usage:
 //   node scripts/smoke-test.js [directory]          # default: ~/Dev/LearningTest
