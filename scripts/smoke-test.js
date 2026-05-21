@@ -100,28 +100,77 @@ function mkDiag(line, col, severity, message) {
   return { line, col, severity, message };
 }
 
+// ── Extract dictionary names (ported from extension.ts) ─────────────────────
+function extractDictionaryNames(document) {
+  const names = [];
+  const pattern = /\bDictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)/g;
+  const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const raw = match[1];
+    const name = raw.startsWith('`') ? raw.slice(1, -1).replace(/``/g, '`') : raw;
+    if (!names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
 // ── Core validation (faithfully ported from extension.ts validateDocument) ────
 function validateDocument(document) {
   const diags = [];
   // Strip // comments in place (preserve offsets)
   const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
 
+  // Collect all dictionary names declared in this file (used for reference checks)
+  const knownDicts = new Set(extractDictionaryNames(document));
+
+  // The derivation part uses (?:"(?:[^"]|"")*"|[^;"])* to skip semicolons inside string literals.
   const varDeclRe = new RegExp(
-    '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\[[^\\]]*\\])?\\s*(?:=[^;]*)?;',
+    '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\[[^\\]]*\\])?\\s*(?:=(?:"(?:[^"]|"")*"|[^;"])*)?;',
     'g',
   );
   const callRe = /=\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g;
 
   let i = 0;
   while (i < text.length) {
-    const braceOpen = text.indexOf('{', i);
+    // Find opening brace, skipping quoted strings
+    let braceOpen = -1;
+    {
+      let inBt = false, inDq = false;
+      for (let k = i; k < text.length; k++) {
+        const ch = text[k];
+        if (inBt) { if (ch === '`') inBt = false; }
+        else if (inDq) {
+          if (ch === '"') {
+            if (k + 1 < text.length && text[k + 1] === '"') k++;
+            else inDq = false;
+          }
+        }
+        else if (ch === '`') inBt = true;
+        else if (ch === '"') inDq = true;
+        else if (ch === '{') { braceOpen = k; break; }
+      }
+    }
     if (braceOpen === -1) break;
 
+    // Find the matching closing brace, skipping quoted strings
     let depth = 1, j = braceOpen + 1;
-    while (j < text.length && depth > 0) {
-      if (text[j] === '{') depth++;
-      else if (text[j] === '}') depth--;
-      j++;
+    {
+      let inBt = false, inDq = false;
+      while (j < text.length && depth > 0) {
+        const ch = text[j];
+        if (inBt) { if (ch === '`') inBt = false; }
+        else if (inDq) {
+          if (ch === '"') {
+            if (j + 1 < text.length && text[j + 1] === '"') j++;
+            else inDq = false;
+          }
+        }
+        else if (ch === '`') inBt = true;
+        else if (ch === '"') inDq = true;
+        else if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+        j++;
+      }
     }
     const blockStart = braceOpen + 1;
     const blockText  = text.slice(blockStart, j - 1);
@@ -134,6 +183,47 @@ function validateDocument(document) {
       const raw  = vm[2];
       const name = raw.startsWith('`') ? raw.slice(1, -1).replace(/``/g, '`') : raw;
       vars.set(name, vm[1]);
+    }
+
+    // ── Key-field type check ──────────────────────────────────────────────
+    const headerText = text.slice(i, braceOpen);
+    const keyListRe = /\bDictionary\s+(?:`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)/;
+    const klMatch = keyListRe.exec(headerText);
+    if (klMatch) {
+      const keyFields = klMatch[1].split(',').map(k => {
+        const t = k.trim();
+        return t.startsWith('`') ? t.slice(1, -1).replace(/``/g, '`') : t;
+      }).filter(k => k.length > 0);
+      for (const keyField of keyFields) {
+        const keyType = vars.get(keyField);
+        if (keyType === undefined || keyType === 'Categorical') continue;
+        varDeclRe.lastIndex = 0;
+        let km;
+        while ((km = varDeclRe.exec(blockText)) !== null) {
+          const raw = km[2];
+          const kname = raw.startsWith('`') ? raw.slice(1, -1).replace(/``/g, '`') : raw;
+          if (kname === keyField) {
+            const pos = document.positionAt(blockStart + km.index);
+            diags.push(mkDiag(pos.line, pos.character, ERROR,
+              `Key field '${keyField}' must be 'Categorical' but is declared as '${keyType}'.`));
+            break;
+          }
+        }
+      }
+    }
+
+    // ── Unknown dictionary check ──────────────────────────────────────────
+    const relRefRe = /\b(?:Table|Entity)\s*\((`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\)/g;
+    relRefRe.lastIndex = 0;
+    let rr;
+    while ((rr = relRefRe.exec(blockText)) !== null) {
+      const rawName = rr[1];
+      const dictName = rawName.startsWith('`') ? rawName.slice(1, -1).replace(/``/g, '`') : rawName;
+      if (knownDicts.has(dictName)) continue;
+      const nameOffsetInMatch = rr[0].indexOf(rr[1]);
+      const pos = document.positionAt(blockStart + rr.index + nameOffsetInMatch);
+      diags.push(mkDiag(pos.line, pos.character, ERROR,
+        `Dictionary '${dictName}' is not declared in this file.`));
     }
 
     // ── Return-type check ─────────────────────────────────────────────────
@@ -201,7 +291,8 @@ function validateDocument(document) {
   const outsidePatterns = [
     /^$/,
     /^#Khiops\b/,
-    /^(Root\s+)?Dictionary\b/,
+    // dictionary declaration: [Root] Dictionary Name [(key, …)] [<meta>]* [{]
+    /^(Root\s+)?Dictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(\s*\([^)]*\))?(\s*<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?> *)*(\s*\{)?\s*$/,
     metaOnlyRe,
     /^\([^)]*\)\s*$/,              // dictionary key list on its own line: (KeyField1, KeyField2)
     /^\{$/,
@@ -215,6 +306,8 @@ function validateDocument(document) {
     metaOnlyRe,
     new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+'),
   ];
+  // Matches the start of any variable declaration line (used for missing-semicolon check)
+  const varDeclStartRe = new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+');
 
   const strippedLines = text.split('\n');
   let lineDepth = 0;
@@ -315,8 +408,9 @@ function validateDocument(document) {
     }
 
     // Update parenDepth: count net unquoted '(' minus ')' on this line
+    let lineNetParens = 0;
     if (depthBefore > 0) {
-      let netParens = 0, inBtP = false, inDqP = false;
+      let inBtP = false, inDqP = false;
       for (let k = 0; k < effective.length; k++) {
         const ch = effective[k];
         if (inBtP) { if (ch === '`') inBtP = false; }
@@ -328,12 +422,38 @@ function validateDocument(document) {
         } else {
           if (ch === '`') inBtP = true;
           else if (ch === '"') inDqP = true;
-          else if (ch === '(') netParens++;
-          else if (ch === ')') netParens--;
+          else if (ch === '(') lineNetParens++;
+          else if (ch === ')') lineNetParens--;
         }
       }
-      parenDepth = Math.max(0, parenDepth + netParens);
     }
+
+    // Check 3: missing ';' at end of a complete variable declaration.
+    if (
+      depthBefore > 0 &&
+      parenDepth === 0 &&
+      !prevLineEndsWithAssign &&
+      effective.length > 0 &&
+      lineNetParens === 0 &&
+      !effective.trimEnd().endsWith('=') &&
+      semiIdx === -1 &&
+      varDeclStartRe.test(effective)
+    ) {
+      const indentLen = lineRaw.length - trimmed.length;
+      diags.push(mkDiag(li, indentLen, ERROR, "Missing ';' at end of variable declaration."));
+    }
+
+    // Update parenDepth using pre-computed lineNetParens
+    if (depthBefore > 0) {
+      parenDepth = Math.max(0, parenDepth + lineNetParens);
+    }
+
+    // Check 4: missing ';' after the closing brace of a dictionary block.
+    if (depthBefore === 1 && lineDepth === 0 && effective === '}') {
+      const col = strippedLine.indexOf('}');
+      diags.push(mkDiag(li, col, ERROR, "Missing ';' after closing brace of dictionary."));
+    }
+
     // Track whether this line ends with '=' (split derivation: next line has the RHS)
     prevLineEndsWithAssign = depthBefore > 0 && effective.trimEnd().endsWith('=');
   }
