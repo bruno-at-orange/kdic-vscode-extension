@@ -46,6 +46,10 @@ Real-time diagnostics (Errors) for simple derivation rule calls (non-nested argu
   > `Categorical x = TableCount(t);` → error on `Categorical` (TableCount returns `Numerical`)
 - **Argument-type mismatch**: an argument variable has the wrong type for its parameter position.
   > `TableCount(Class)` where `Class` is `Categorical` → error on `Class` (expected `Table`)
+- **Key field not Categorical**: every field listed in a dictionary's key must be declared `Categorical`.
+  > `Numerical id;` in a `Dictionary Foo (id)` → error on `Numerical`
+- **Unknown dictionary reference**: `Table(X)` or `Entity(X)` where dictionary `X` is not declared anywhere in the file.
+  > `Table(Burbu) vehicles;` → error on `Burbu`
 
 Cross-dictionary variable references (multi-table secondary scope) are silently ignored.
 
@@ -54,12 +58,15 @@ Cross-dictionary variable references (multi-table secondary scope) are silently 
 Real-time diagnostics for structural grammar issues:
 
 - **(Error)** Non-comment, non-metadata content after `;`
+- **(Error)** Missing `;` at the end of a complete variable declaration
+- **(Error)** Missing `;` after the closing `}` of a dictionary block
 - **(Warning)** Lines that do not match any known kdic grammar pattern — use `//` to mark non-kdic content
 
 Allowed after `;`: metadata annotations `<key>`, `<key=value>`, `<key="value">` and `//` comments.
 
 Recognised structural patterns include:
-- Dictionary headers with optional key list: `Root Dictionary Foo (key1, key2)`
+- Dictionary headers with optional key list and metadata: `Root Dictionary Foo (key1, key2) <meta> {`
+  - After the dictionary name, only a key list `(…)`, metadata tags `<…>`, and/or an opening brace `{` are valid
 - Key list on its own line: `(SampleId)`
 - Variable declarations: `[Unused] Type[(Class)] name [= derivation] ;`
 - Sparse sub-block syntax: `{` / `} BlockName [= derivation] ;`

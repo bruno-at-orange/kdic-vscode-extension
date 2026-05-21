@@ -641,6 +641,9 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
   // Strip line comments while preserving character offsets
   const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
 
+  // Collect all dictionary names declared in this file (used for reference checks)
+  const knownDicts = new Set(extractDictionaryNames(document));
+
   const typeAlt = KDIC_TYPES.join('|');
   // Matches a variable declaration inside a block:
   //   [Unused ] Type[(ClassName)] varName [\[joinKey\]] [= anything] ;
@@ -679,6 +682,61 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
       const raw = vm[2];
       const name = raw.startsWith('`') ? raw.slice(1, -1).replace(/``/g, '`') : raw;
       vars.set(name, vm[1]);
+    }
+
+    // Check key fields: every variable listed in the dictionary key (Name (f1, f2, …))
+    // must be declared as Categorical.
+    const headerText = text.slice(i, braceOpen);
+    const keyListRe = /\bDictionary\s+(?:`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)/;
+    const klMatch = keyListRe.exec(headerText);
+    if (klMatch) {
+      const keyFields = klMatch[1].split(',').map(k => {
+        const t = k.trim();
+        return t.startsWith('`') ? t.slice(1, -1).replace(/``/g, '`') : t;
+      }).filter(k => k.length > 0);
+      for (const keyField of keyFields) {
+        const keyType = vars.get(keyField);
+        if (keyType === undefined || keyType === 'Categorical') { continue; }
+        // Re-scan blockText to locate this variable's declaration precisely
+        varDeclRe.lastIndex = 0;
+        let km: RegExpExecArray | null;
+        while ((km = varDeclRe.exec(blockText)) !== null) {
+          const raw = km[2];
+          const kname = raw.startsWith('`') ? raw.slice(1, -1).replace(/``/g, '`') : raw;
+          if (kname === keyField) {
+            const start = document.positionAt(blockStart + km.index);
+            const range = new vscode.Range(start, start.translate(0, km[1].length));
+            const diag = new vscode.Diagnostic(
+              range,
+              `Key field '${keyField}' must be 'Categorical' but is declared as '${keyType}'.`,
+              vscode.DiagnosticSeverity.Error,
+            );
+            diag.source = 'kdic';
+            diags.push(diag);
+            break;
+          }
+        }
+      }
+    }
+
+    // Check that every Table(X) / Entity(X) variable declaration references a known dictionary
+    const relRefRe = /\b(?:Table|Entity)\s*\((`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\)/g;
+    relRefRe.lastIndex = 0;
+    let rr: RegExpExecArray | null;
+    while ((rr = relRefRe.exec(blockText)) !== null) {
+      const rawName = rr[1];
+      const dictName = rawName.startsWith('`') ? rawName.slice(1, -1).replace(/``/g, '`') : rawName;
+      if (knownDicts.has(dictName)) { continue; }
+      const nameOffsetInMatch = rr[0].indexOf(rr[1]);
+      const start = document.positionAt(blockStart + rr.index + nameOffsetInMatch);
+      const range = new vscode.Range(start, start.translate(0, rr[1].length));
+      const diag = new vscode.Diagnostic(
+        range,
+        `Dictionary '${dictName}' is not declared in this file.`,
+        vscode.DiagnosticSeverity.Error,
+      );
+      diag.source = 'kdic';
+      diags.push(diag);
     }
 
     // Check declared variable type vs derivation rule return type
@@ -764,7 +822,10 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
   const outsidePatterns = [
     /^$/,                          // empty
     /^#Khiops\b/,                  // file header: #Khiops <version>
-    /^(Root\s+)?Dictionary\b/,    // dictionary declaration (+ optional trailing metadata / {)
+    // dictionary declaration: [Root] Dictionary Name [(key, …)] [<meta>]* [{]
+    // Name is a plain identifier or a backtick-quoted identifier.
+    // After the name only key list, metadata tags, and/or an opening brace are allowed.
+    /^(Root\s+)?Dictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(\s*\([^)]*\))?(\s*<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?>\s*)*(\s*\{)?\s*$/,
     metaOnlyRe,                    // metadata-only line: <key>, <key=value>, <key="value">
     /^\([^)]*\)\s*$/,              // dictionary key list on its own line: (KeyField1, KeyField2)
     /^\{$/,                        // opening brace alone
@@ -780,6 +841,8 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
     // variable declaration: [Unused ] Type[(Class)] varName ...
     new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+'),
   ];
+  // Matches the start of any variable declaration line (used for missing-semicolon check)
+  const varDeclStartRe = new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+');
 
   const strippedLines = text.split(/\r?\n/);
   let lineDepth = 0;
@@ -898,10 +961,10 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
       }
     }
 
-    // Update parenDepth: count net unquoted '(' minus ')' on this line
-    // (only meaningful inside a dictionary block)
+    // Compute net parens for this line (used for missing-semicolon check and parenDepth update)
+    let lineNetParens = 0;
     if (depthBefore > 0) {
-      let netParens = 0, inBtP = false, inDqP = false;
+      let inBtP = false, inDqP = false;
       for (let k = 0; k < effective.length; k++) {
         const ch = effective[k];
         if (inBtP) { if (ch === '`') { inBtP = false; } }
@@ -913,12 +976,54 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
         } else {
           if (ch === '`') { inBtP = true; }
           else if (ch === '"') { inDqP = true; }
-          else if (ch === '(') { netParens++; }
-          else if (ch === ')') { netParens--; }
+          else if (ch === '(') { lineNetParens++; }
+          else if (ch === ')') { lineNetParens--; }
         }
       }
-      parenDepth = Math.max(0, parenDepth + netParens);
     }
+
+    // Check 3: missing ';' at end of a complete variable declaration.
+    // Fires when: inside a block, not a continuation line, the statement is complete on this
+    // line (balanced parens, not a split '= …' leading into the next line), and no ';' found.
+    if (
+      depthBefore > 0 &&
+      parenDepth === 0 &&
+      !prevLineEndsWithAssign &&
+      effective.length > 0 &&
+      lineNetParens === 0 &&
+      !effective.trimEnd().endsWith('=') &&
+      semiIdx === -1 &&
+      varDeclStartRe.test(effective)
+    ) {
+      const indentLen = lineRaw.length - trimmed.length;
+      const endCol = strippedLine.trimEnd().length;
+      const diag = new vscode.Diagnostic(
+        new vscode.Range(new vscode.Position(li, indentLen), new vscode.Position(li, endCol)),
+        "Missing ';' at end of variable declaration.",
+        vscode.DiagnosticSeverity.Error,
+      );
+      diag.source = 'kdic';
+      diags.push(diag);
+    }
+
+    // Update parenDepth using pre-computed lineNetParens
+    if (depthBefore > 0) {
+      parenDepth = Math.max(0, parenDepth + lineNetParens);
+    }
+
+    // Check 4: missing ';' after the closing brace of a dictionary block.
+    // depthBefore === 1 means we were at dictionary level; lineDepth === 0 confirms it just closed.
+    if (depthBefore === 1 && lineDepth === 0 && effective === '}') {
+      const col = strippedLine.indexOf('}');
+      const diag = new vscode.Diagnostic(
+        new vscode.Range(new vscode.Position(li, col), new vscode.Position(li, col + 1)),
+        "Missing ';' after closing brace of dictionary.",
+        vscode.DiagnosticSeverity.Error,
+      );
+      diag.source = 'kdic';
+      diags.push(diag);
+    }
+
     // Track whether this line ends with '=' (split derivation: next line has the RHS)
     prevLineEndsWithAssign = depthBefore > 0 && effective.trimEnd().endsWith('=');
   }
