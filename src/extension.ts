@@ -660,15 +660,45 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
 
   let i = 0;
   while (i < text.length) {
-    const braceOpen = text.indexOf('{', i);
+    // Find opening brace, skipping quoted strings
+    let braceOpen = -1;
+    {
+      let inBt = false, inDq = false;
+      for (let k = i; k < text.length; k++) {
+        const ch = text[k];
+        if (inBt) { if (ch === '`') { inBt = false; } }
+        else if (inDq) {
+          if (ch === '"') {
+            if (k + 1 < text.length && text[k + 1] === '"') { k++; }
+            else { inDq = false; }
+          }
+        }
+        else if (ch === '`') { inBt = true; }
+        else if (ch === '"') { inDq = true; }
+        else if (ch === '{') { braceOpen = k; break; }
+      }
+    }
     if (braceOpen === -1) { break; }
 
-    // Find the matching closing brace
+    // Find the matching closing brace, skipping quoted strings
     let depth = 1, j = braceOpen + 1;
-    while (j < text.length && depth > 0) {
-      if (text[j] === '{') { depth++; }
-      else if (text[j] === '}') { depth--; }
-      j++;
+    {
+      let inBt = false, inDq = false;
+      while (j < text.length && depth > 0) {
+        const ch = text[j];
+        if (inBt) { if (ch === '`') { inBt = false; } }
+        else if (inDq) {
+          if (ch === '"') {
+            if (j + 1 < text.length && text[j + 1] === '"') { j++; }
+            else { inDq = false; }
+          }
+        }
+        else if (ch === '`') { inBt = true; }
+        else if (ch === '"') { inDq = true; }
+        else if (ch === '{') { depth++; }
+        else if (ch === '}') { depth--; }
+        j++;
+      }
     }
 
     const blockStart = braceOpen + 1;
