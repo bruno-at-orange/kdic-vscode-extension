@@ -29,7 +29,7 @@ Context-aware completions:
 | After `=` (derivation)      | All derivation rule functions with signatures and documentation              |
 | After `Entity(` or `Table(` | Dictionary names declared in the current file                                |
 
-**Covered rule categories**: Numerical/Categorical comparisons, Logical operators, Data conversion, Math, String, Date/Time/Timestamp, Table aggregation, Table management.
+**Covered rule categories**: Numerical/Categorical comparisons, Logical operators, Data conversion, Math, String, Date/Time/Timestamp/TimestampTZ, Table aggregation, Table management, Vector, Hash Map, Data preparation, Predictor (Classifier/Regressor), Interpretation, Reinforcement, Coclustering.
 
 ### Hover Documentation
 
