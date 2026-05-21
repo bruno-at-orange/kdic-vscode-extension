@@ -100,16 +100,85 @@ function mkDiag(line, col, severity, message) {
   return { line, col, severity, message };
 }
 
-// ── Extract dictionary names (ported from extension.ts) ─────────────────────
-function extractDictionaryNames(document) {
-  const names = [];
-  const pattern = /\bDictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)/g;
-  const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
+// ── Module-level compiled regexes (compiled once, not per file/block) ─────────
+const dictNameRe    = /\bDictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)/g;
+const varDeclRe     = new RegExp(
+  '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\[[^\\]]*\\])?\\s*(?:=(?:"(?:[^"]|"")*"|[^;"])*)?;',
+  'g',
+);
+const callRe        = /=\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g;
+const derivedDeclRe = new RegExp(
+  '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(?:`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^()]*\\)',
+  'g',
+);
+const relRefRe      = /\b(?:Table|Entity)\s*\((`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\)/g;
+const keyListRe     = /\bDictionary\s+(?:`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)/;
+const metaOnlyRe    = /^(<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?> *)+$/;
+const outsidePatterns = [
+  /^$/,
+  /^#Khiops\b/,
+  // dictionary declaration: [Root] Dictionary Name [(key, …)] [<meta>]* [{]
+  /^(Root\s+)?Dictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(\s*\([^)]*\))?(\s*<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?> *)*(\s*\{)?\s*$/,
+  metaOnlyRe,
+  /^\([^)]*\)\s*$/,              // dictionary key list on its own line
+  /^\{$/,
+  /^\};?$/,
+];
+const insidePatterns = [
+  /^$/,
+  /^\{$/,
+  /^\}\s+\S/,
+  /^\};?$/,
+  metaOnlyRe,
+  new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+'),
+];
+const varDeclStartRe = new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+');
+const metaOneRe      = /<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?>/g;
+const commentRe      = /\/\/[^\n]*/g;
+
+// ── Quote-aware comment stripper (preserves character offsets) ────────────────
+// The simple /\/\/[^\n]*/g regex incorrectly strips `//` inside backtick-quoted
+// identifiers (e.g. `FREQ_//token`) and double-quoted strings. This function
+// handles those contexts correctly.
+function stripLineComments(text) {
+  const out = [];
+  let inBt = false, inDq = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\n') {
+      inBt = false; inDq = false; out.push(ch);
+    } else if (inBt) {
+      if (ch === '`') { inBt = false; } out.push(ch);
+    } else if (inDq) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') { out.push('""'); i++; continue; }
+        inDq = false;
+      }
+      out.push(ch);
+    } else if (ch === '`') {
+      inBt = true; out.push(ch);
+    } else if (ch === '"') {
+      inDq = true; out.push(ch);
+    } else if (ch === '/' && i + 1 < text.length && text[i + 1] === '/') {
+      let j = i;
+      while (j < text.length && text[j] !== '\n') { j++; }
+      out.push(' '.repeat(j - i));
+      i = j - 1;
+    } else {
+      out.push(ch);
+    }
+  }
+  return out.join('');
+}
+
+// ── Extract dictionary names from pre-stripped text ──────────────────────────
+function extractDictionaryNames(strippedText) {
+  const names = new Set();
+  dictNameRe.lastIndex = 0;  let match;
+  while ((match = dictNameRe.exec(strippedText)) !== null) {
     const raw = match[1];
     const name = raw.startsWith('`') ? raw.slice(1, -1).replace(/``/g, '`') : raw;
-    if (!names.includes(name)) names.push(name);
+    names.add(name);
   }
   return names;
 }
@@ -117,18 +186,11 @@ function extractDictionaryNames(document) {
 // ── Core validation (faithfully ported from extension.ts validateDocument) ────
 function validateDocument(document) {
   const diags = [];
-  // Strip // comments in place (preserve offsets)
-  const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
+  // Strip // comments while preserving character offsets; backtick/quote-aware
+  const text = stripLineComments(document.getText());
 
   // Collect all dictionary names declared in this file (used for reference checks)
-  const knownDicts = new Set(extractDictionaryNames(document));
-
-  // The derivation part uses (?:"(?:[^"]|"")*"|[^;"])* to skip semicolons inside string literals.
-  const varDeclRe = new RegExp(
-    '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\[[^\\]]*\\])?\\s*(?:=(?:"(?:[^"]|"")*"|[^;"])*)?;',
-    'g',
-  );
-  const callRe = /=\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(([^()]*)\)/g;
+  const knownDicts = extractDictionaryNames(text);
 
   let i = 0;
   while (i < text.length) {
@@ -187,7 +249,7 @@ function validateDocument(document) {
 
     // ── Key-field type check ──────────────────────────────────────────────
     const headerText = text.slice(i, braceOpen);
-    const keyListRe = /\bDictionary\s+(?:`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)/;
+
     const klMatch = keyListRe.exec(headerText);
     if (klMatch) {
       const keyFields = klMatch[1].split(',').map(k => {
@@ -213,7 +275,7 @@ function validateDocument(document) {
     }
 
     // ── Unknown dictionary check ──────────────────────────────────────────
-    const relRefRe = /\b(?:Table|Entity)\s*\((`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\)/g;
+
     relRefRe.lastIndex = 0;
     let rr;
     while ((rr = relRefRe.exec(blockText)) !== null) {
@@ -227,10 +289,7 @@ function validateDocument(document) {
     }
 
     // ── Return-type check ─────────────────────────────────────────────────
-    const derivedDeclRe = new RegExp(
-      '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(?:`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*\\([^()]*\\)',
-      'g',
-    );
+
     derivedDeclRe.lastIndex = 0;
     let dm;
     while ((dm = derivedDeclRe.exec(blockText)) !== null) {
@@ -285,30 +344,6 @@ function validateDocument(document) {
   }
 
   // ── Line-level grammar check ──────────────────────────────────────────────
-  // Metadata-only line: one or more <key>, <key=value>, or <key="..."> tags.
-  // The quoted-value branch allows '>' inside the double-quoted string.
-  const metaOnlyRe = /^(<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?> *)+$/;
-  const outsidePatterns = [
-    /^$/,
-    /^#Khiops\b/,
-    // dictionary declaration: [Root] Dictionary Name [(key, …)] [<meta>]* [{]
-    /^(Root\s+)?Dictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(\s*\([^)]*\))?(\s*<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?> *)*(\s*\{)?\s*$/,
-    metaOnlyRe,
-    /^\([^)]*\)\s*$/,              // dictionary key list on its own line: (KeyField1, KeyField2)
-    /^\{$/,
-    /^\};?$/,
-  ];
-  const insidePatterns = [
-    /^$/,
-    /^\{$/,                        // sparse rules sub-block opening
-    /^\}\s+\S/,                    // sparse rules sub-block closer: } BlockName [= derivation] ;
-    /^\};?$/,
-    metaOnlyRe,
-    new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+'),
-  ];
-  // Matches the start of any variable declaration line (used for missing-semicolon check)
-  const varDeclStartRe = new RegExp('^(Unused\\s+)?(' + typeAlt + ')(\\([^)]*\\))?\\s+');
-
   const strippedLines = text.split('\n');
   let lineDepth = 0;
   // parenDepth tracks unclosed '(' from previous lines (multi-line derivations).
@@ -372,18 +407,17 @@ function validateDocument(document) {
       const afterSemi      = strippedLine.slice(semiIdx + 1);
       // Valid prefix: whitespace + <key[=value]> metadata blocks.
       // Quoted values (key="val") may contain '>' and use "" to escape ".
-      const metaOne = /<[A-Za-z_][A-Za-z0-9_]*(?:=(?:"[^"]*(?:""[^"]*)*"|[^"<>\s]*))?>/g;
       let mEnd = 0;
       {
         const ws = afterSemi.match(/^\s*/)?.[0] ?? '';
         let pos = ws.length;
-        metaOne.lastIndex = pos;
+        metaOneRe.lastIndex = pos;
         let m;
-        while ((m = metaOne.exec(afterSemi)) !== null && m.index === pos) {
-          pos = metaOne.lastIndex;
+        while ((m = metaOneRe.exec(afterSemi)) !== null && m.index === pos) {
+          pos = metaOneRe.lastIndex;
           const trailingWs = afterSemi.slice(pos).match(/^\s*/)?.[0] ?? '';
           pos += trailingWs.length;
-          metaOne.lastIndex = pos;
+          metaOneRe.lastIndex = pos;
         }
         mEnd = pos;
       }

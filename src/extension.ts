@@ -519,13 +519,49 @@ const DERIVATION_RULES: FunctionEntry[] = [
 // ─────────────────────────── Helper functions ────────────────────────────────
 
 /**
+ * Replaces `// …` line comments with spaces, preserving character offsets.
+ * Correctly skips `//` that appears inside backtick-quoted identifiers or
+ * double-quoted string literals (e.g. `FREQ_//token` or "//url").
+ */
+function stripLineComments(text: string): string {
+  const out: string[] = [];
+  let inBt = false, inDq = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\n') {
+      inBt = false; inDq = false; out.push(ch);
+    } else if (inBt) {
+      if (ch === '`') { inBt = false; } out.push(ch);
+    } else if (inDq) {
+      if (ch === '"') {
+        if (i + 1 < text.length && text[i + 1] === '"') { out.push('""'); i++; continue; }
+        inDq = false;
+      }
+      out.push(ch);
+    } else if (ch === '`') {
+      inBt = true; out.push(ch);
+    } else if (ch === '"') {
+      inDq = true; out.push(ch);
+    } else if (ch === '/' && i + 1 < text.length && text[i + 1] === '/') {
+      let j = i;
+      while (j < text.length && text[j] !== '\n') { j++; }
+      out.push(' '.repeat(j - i));
+      i = j - 1;
+    } else {
+      out.push(ch);
+    }
+  }
+  return out.join('');
+}
+
+/**
  * Extracts all dictionary names declared in the document.
  * Handles both `Dictionary MyName` and `Root Dictionary MyName`.
  */
 function extractDictionaryNames(document: vscode.TextDocument): string[] {
   const names: string[] = [];
   const pattern = /\bDictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)/g;
-  const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
+  const text = stripLineComments(document.getText());
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
     const raw = match[1];
@@ -544,8 +580,7 @@ function extractDictionaryNames(document: vscode.TextDocument): string[] {
 function isInsideDictionaryBlock(document: vscode.TextDocument, position: vscode.Position): boolean {
   const textUpToCursor = document.getText(new vscode.Range(new vscode.Position(0, 0), position));
   // Strip comments and strings to avoid false brace counting
-  const stripped = textUpToCursor
-    .replace(/\/\/[^\n]*/g, '')
+  const stripped = stripLineComments(textUpToCursor)
     .replace(/"(?:[^"]|"")*"/g, '""')
     .replace(/`(?:[^`]|``)*`/g, '``');
   let depth = 0;
@@ -639,7 +674,7 @@ const RETURN_TYPE_MAP: Map<string, string> = new Map(
 function validateDocument(document: vscode.TextDocument, collection: vscode.DiagnosticCollection): void {
   const diags: vscode.Diagnostic[] = [];
   // Strip line comments while preserving character offsets
-  const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
+  const text = stripLineComments(document.getText());
 
   // Collect all dictionary names declared in this file (used for reference checks)
   const knownDicts = new Set(extractDictionaryNames(document));
