@@ -525,7 +525,7 @@ const DERIVATION_RULES: FunctionEntry[] = [
 function extractDictionaryNames(document: vscode.TextDocument): string[] {
   const names: string[] = [];
   const pattern = /\bDictionary\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)/g;
-  const text = document.getText();
+  const text = document.getText().replace(/\/\/[^\n]*/g, m => ' '.repeat(m.length));
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
     const raw = match[1];
