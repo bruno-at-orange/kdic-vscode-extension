@@ -716,12 +716,16 @@ export function activate(context: vscode.ExtensionContext): void {
   for (const doc of vscode.workspace.textDocuments) {
     if (doc.languageId === 'kdic') { validateDocument(doc, diagnostics); }
   }
+  let validateTimer: ReturnType<typeof setTimeout> | undefined;
   context.subscriptions.push(
     vscode.workspace.onDidOpenTextDocument(doc => {
       if (doc.languageId === 'kdic') { validateDocument(doc, diagnostics); }
     }),
     vscode.workspace.onDidChangeTextDocument(e => {
-      if (e.document.languageId === 'kdic') { validateDocument(e.document, diagnostics); }
+      if (e.document.languageId === 'kdic') {
+        clearTimeout(validateTimer);
+        validateTimer = setTimeout(() => validateDocument(e.document, diagnostics), 300);
+      }
     }),
     vscode.workspace.onDidCloseTextDocument(doc => {
       diagnostics.delete(doc.uri);
