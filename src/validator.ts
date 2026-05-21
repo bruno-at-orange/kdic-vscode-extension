@@ -487,7 +487,9 @@ export function validate(
       }
     }
 
-    // Check 3: missing ';' at end of a complete variable declaration
+    // Check 3: missing ';' at end of a complete variable declaration.
+    // Only fire when the user has already moved to the next line (li is not the
+    // last line), so the error doesn't flash while they are still typing.
     if (
       depthBefore > 0 &&
       parenDepth === 0 &&
@@ -496,7 +498,8 @@ export function validate(
       lineNetParens === 0 &&
       !effective.trimEnd().endsWith('=') &&
       semiIdx === -1 &&
-      varDeclStartRe.test(effective)
+      varDeclStartRe.test(effective) &&
+      li < document.lineCount - 1
     ) {
       const indentLen = lineRaw.length - trimmed.length;
       const endCol = strippedLine.trimEnd().length;
