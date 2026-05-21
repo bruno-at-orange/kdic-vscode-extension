@@ -633,8 +633,8 @@ const RETURN_TYPE_MAP: Map<string, string> = new Map(
  *  - Only simple derivation calls are type-checked (no nested function calls).
  *  - Cross-dictionary variable references (multi-table secondary scopes) are
  *    silently skipped because those variables are not in the current block's map.
- *  - String literals that contain `;` may confuse the `varDeclRe` pattern in
- *    very unusual derivation rules.
+ *  - String literals that contain `;` are handled in `varDeclRe`, but backtick-quoted
+ *    identifiers with `;` are not (extremely unlikely in practice).
  */
 function validateDocument(document: vscode.TextDocument, collection: vscode.DiagnosticCollection): void {
   const diags: vscode.Diagnostic[] = [];
@@ -649,8 +649,9 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
   //   [Unused ] Type[(ClassName)] varName [\[joinKey\]] [= anything] ;
   // The optional [\[joinKey\]] group handles external-table join syntax:
   //   Entity(Product) MyProduct [id_product] ;
+  // The derivation part uses (?:"(?:[^"]|"")*"|[^;"])* to skip semicolons inside string literals.
   const varDeclRe = new RegExp(
-    '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\[[^\\]]*\\])?\\s*(?:=[^;]*)?;',
+    '(?:Unused\\s+)?(' + typeAlt + ')(?:\\([^)]*\\))?\\s+(`(?:[^`]|``)*`|[A-Za-z_][A-Za-z0-9_]*)(?:\\s*\\[[^\\]]*\\])?\\s*(?:=(?:"(?:[^"]|"")*"|[^;"])*)?;',
     'g',
   );
   // Matches: = FunctionName(args with no nested parentheses) — "simple case" only.
