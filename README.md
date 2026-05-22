@@ -73,14 +73,15 @@ When a Khiops binary is available, the extension can run native Khiops parsing d
 Configuration settings:
 
 - `kdic.enableKhiopsValidation` (`true` by default): enable/disable native Khiops checks
-- `kdic.khiopsPath` (empty by default): explicit path to `khiops` binary or to a directory containing it
+- `kdic.enableDebugTraces` (`false` by default): show verbose Khiops trace logs in the Output panel
+- `kdic.khiopsPath` (empty by default): explicit path to Khiops binary or to a directory containing it (`khiops` on macOS/Linux, `khiops.cmd` on Windows)
 - `kdic.diagnosticSource` (`both` by default): choose `khiops`, `extension`, or `both`
 
 Binary discovery order:
 
 1. `kdic.khiopsPath`
-2. `$KHIOPS_HOME/bin/khiops`
-3. `/usr/bin/khiops`
+2. `$KHIOPS_HOME/bin/khiops` (or `$KHIOPS_HOME\\bin\\khiops.cmd` on Windows)
+3. `/usr/bin/khiops` (macOS/Linux only)
 
 If no binary is found, the extension falls back automatically to built-in validation.
 

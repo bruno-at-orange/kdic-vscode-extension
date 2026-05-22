@@ -55,17 +55,26 @@
         "kdic.khiopsPath": {
           "type": "string",
           "default": "",
-          "description": "Explicit path to the khiops binary. If empty, auto-detects from KHIOPS_HOME or /usr/bin/khiops."
+          "description": "Explicit path to the Khiops binary. If empty, auto-detects from KHIOPS_HOME/bin/khiops (or KHIOPS_HOME\\bin\\khiops.cmd on Windows) and /usr/bin/khiops on macOS/Linux."
         },
         "kdic.enableKhiopsValidation": {
           "type": "boolean",
           "default": true,
           "description": "Run Khiops on save to validate dictionary files."
         },
+        "kdic.enableDebugTraces": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose Khiops debug traces in the Khiops output channel."
+        },
         "kdic.diagnosticSource": {
           "type": "string",
           "default": "both",
-          "enum": ["khiops", "extension", "both"],
+          "enum": [
+            "khiops",
+            "extension",
+            "both"
+          ],
           "enumDescriptions": [
             "Show only Khiops native errors (requires Khiops binary)",
             "Show only built-in extension errors",
