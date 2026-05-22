@@ -567,7 +567,9 @@ const { paramTypeMap: PARAM_TYPE_MAP, returnTypeMap: RETURN_TYPE_MAP } = buildTy
  * the plain KdicDiagnostic results to vscode.Diagnostic objects.
  */
 function validateDocument(document: vscode.TextDocument, collection: vscode.DiagnosticCollection): void {
-  const plainDiags = validate(document, PARAM_TYPE_MAP, RETURN_TYPE_MAP);
+  const editor = vscode.window.activeTextEditor;
+  const cursorLine = editor && editor.document === document ? editor.selection.active.line : undefined;
+  const plainDiags = validate(document, PARAM_TYPE_MAP, RETURN_TYPE_MAP, cursorLine);
   const diags = plainDiags.map((d: KdicDiagnostic) => {
     const diag = new vscode.Diagnostic(
       new vscode.Range(new vscode.Position(d.line, d.col), new vscode.Position(d.line, d.endCol)),

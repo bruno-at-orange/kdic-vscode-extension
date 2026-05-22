@@ -138,6 +138,7 @@ export function validate(
   document: KdicDocument,
   paramTypeMap: ParamTypeMap,
   returnTypeMap: ReturnTypeMap,
+  cursorLine?: number,
 ): KdicDiagnostic[] {
   const diags: KdicDiagnostic[] = [];
 
@@ -490,6 +491,7 @@ export function validate(
     // Check 3: missing ';' at end of a complete variable declaration.
     // Only fire when the user has already moved to the next line (li is not the
     // last line), so the error doesn't flash while they are still typing.
+    // Also skip the line the cursor is currently on — the user may still be editing it.
     if (
       depthBefore > 0 &&
       parenDepth === 0 &&
@@ -499,7 +501,8 @@ export function validate(
       !effective.trimEnd().endsWith('=') &&
       semiIdx === -1 &&
       varDeclStartRe.test(effective) &&
-      li < document.lineCount - 1
+      li < document.lineCount - 1 &&
+      li !== cursorLine
     ) {
       const indentLen = lineRaw.length - trimmed.length;
       const endCol = strippedLine.trimEnd().length;
