@@ -44,6 +44,10 @@
  *   ADVANCED_TYPES.  Add the type name to KDIC_TYPES if it is a variable type.
  */
 import * as vscode from 'vscode';
+import * as cp from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import {
   KDIC_TYPES, Severity,
   type KdicDiagnostic, type KdicDocument,
@@ -582,6 +586,181 @@ function validateDocument(document: vscode.TextDocument, collection: vscode.Diag
   collection.set(document.uri, diags);
 }
 
+// ─────────────────────── Khiops native validation ───────────────────────────
+
+/**
+ * Finds the khiops binary path.
+ * Priority: setting > KHIOPS_HOME > /usr/bin/khiops
+ */
+function findKhiopsBinary(log: vscode.OutputChannel): string | undefined {
+  const config = vscode.workspace.getConfiguration('kdic');
+  const explicit = config.get<string>('khiopsPath', '');
+  log.appendLine(`[Khiops] kdic.khiopsPath setting = "${explicit}"`);
+  log.appendLine(`[Khiops] KHIOPS_HOME env = "${process.env['KHIOPS_HOME'] || ''}"`);
+
+  if (explicit) {
+    // Accept both a direct path to the binary and a directory containing it
+    if (fs.existsSync(explicit) && fs.statSync(explicit).isFile()) {
+      log.appendLine(`[Khiops] Found binary at explicit path: ${explicit}`);
+      return explicit;
+    }
+    const bin = path.join(explicit, 'khiops');
+    log.appendLine(`[Khiops] Trying: ${bin}`);
+    if (fs.existsSync(bin)) {
+      log.appendLine(`[Khiops] Found binary: ${bin}`);
+      return bin;
+    }
+    log.appendLine(`[Khiops] Binary not found at setting path`);
+    return undefined;
+  }
+
+  const khiopsHome = process.env['KHIOPS_HOME'];
+  if (khiopsHome) {
+    const bin = path.join(khiopsHome, 'bin', 'khiops');
+    log.appendLine(`[Khiops] Trying KHIOPS_HOME: ${bin}`);
+    if (fs.existsSync(bin)) {
+      log.appendLine(`[Khiops] Found binary: ${bin}`);
+      return bin;
+    }
+  }
+
+  log.appendLine(`[Khiops] Trying /usr/bin/khiops`);
+  if (fs.existsSync('/usr/bin/khiops')) {
+    log.appendLine(`[Khiops] Found binary: /usr/bin/khiops`);
+    return '/usr/bin/khiops';
+  }
+
+  log.appendLine(`[Khiops] No binary found`);
+  return undefined;
+}
+
+/**
+ * Generates a scenario file content that loads a dictionary and exits.
+ */
+function buildCheckScenario(kdicPath: string): string {
+  return [
+    '// Auto-generated validation scenario',
+    'ClassManagement.OpenFile       // Open...',
+    '',
+    '// -> Open',
+    `ClassFileName ${kdicPath}        // Dictionary file`,
+    'OK                             // Open',
+    '// <- Open',
+    '',
+    'ClassManagement.Quit           // Quit',
+    '// <- Khiops',
+    '',
+    '',
+    '// -> Khiops',
+    'OK                             // Yes',
+    '// <- Khiops',
+  ].join('\n');
+}
+
+/**
+ * Parses Khiops error output and returns diagnostics.
+ * Handles two formats:
+ *   - With line number: "error : Read dictionary file Line 7 : Missing ';'"
+ *   - Without line number: "error : Variable test : Derivation rule TableCount incorrectly specified"
+ */
+function parseKhiopsErrors(output: string, docUri: vscode.Uri): vscode.Diagnostic[] {
+  const diags: vscode.Diagnostic[] = [];
+  const reWithLine = /error\s*:\s*.*?Line\s+(\d+)\s*:\s*(.+)$/gm;
+  const reGeneral = /error\s*:\s*(.+)$/gm;
+  const matched = new Set<number>(); // track character offsets already matched
+
+  // First pass: errors with line numbers
+  let m: RegExpExecArray | null;
+  while ((m = reWithLine.exec(output)) !== null) {
+    matched.add(m.index);
+    const line = Math.max(0, parseInt(m[1], 10) - 1);
+    const message = m[2].trim();
+    const diag = new vscode.Diagnostic(
+      new vscode.Range(line, 0, line, Number.MAX_SAFE_INTEGER),
+      message,
+      vscode.DiagnosticSeverity.Error,
+    );
+    diag.source = 'khiops';
+    diags.push(diag);
+  }
+
+  // Second pass: errors without line numbers (placed at line 0)
+  while ((m = reGeneral.exec(output)) !== null) {
+    if (matched.has(m.index)) { continue; } // already captured with line number
+    const message = m[1].trim();
+    // Skip summary lines like "Errors detected during parsing" or "Read cancelled"
+    if (/Errors detected during parsing|Read cancelled/i.test(message)) { continue; }
+    const diag = new vscode.Diagnostic(
+      new vscode.Range(0, 0, 0, Number.MAX_SAFE_INTEGER),
+      message,
+      vscode.DiagnosticSeverity.Error,
+    );
+    diag.source = 'khiops';
+    diags.push(diag);
+  }
+
+  return diags;
+}
+
+/** Active Khiops validation promise — used to serialize runs. */
+let khiopsRunning: Promise<void> = Promise.resolve();
+
+/**
+ * Runs Khiops validation on the given document.
+ * Waits for any previous run to finish before starting.
+ */
+function runKhiopsValidation(
+  doc: vscode.TextDocument,
+  khiopsPath: string,
+  khiopsDiags: vscode.DiagnosticCollection,
+  outputChannel: vscode.OutputChannel,
+): void {
+  if (doc.uri.scheme !== 'file') { return; }
+
+  khiopsRunning = khiopsRunning.then(() => new Promise<void>((resolve) => {
+    const kdicPath = doc.uri.fsPath;
+    const scenarioContent = buildCheckScenario(kdicPath);
+    const tmpDir = os.tmpdir();
+    const scenarioFile = path.join(tmpDir, `kdic-check-${process.pid}.prm`);
+
+    try {
+      fs.writeFileSync(scenarioFile, scenarioContent, 'utf-8');
+    } catch {
+      resolve();
+      return;
+    }
+
+    const args = ['-b', '-i', scenarioFile, '-e', '/dev/stdout'];
+    outputChannel.appendLine(`[Khiops] Running: ${khiopsPath} ${args.join(' ')}`);
+    outputChannel.appendLine(`[Khiops] Scenario file: ${scenarioFile}`);
+    outputChannel.appendLine(`[Khiops] Dictionary: ${kdicPath}`);
+
+    cp.execFile(khiopsPath, args, { timeout: 30000 }, (err, stdout, stderr) => {
+      // Clean up temp scenario
+      try { fs.unlinkSync(scenarioFile); } catch { /* ignore */ }
+
+      if (err) {
+        outputChannel.appendLine(`[Khiops] Process error: ${err.message}`);
+      }
+
+      const output = (stdout || '') + (stderr || '');
+
+      if (output.trim()) {
+        outputChannel.appendLine(`[Khiops] Output:`);
+        outputChannel.appendLine(output);
+      } else {
+        outputChannel.appendLine(`[Khiops] No output (exit ok, no errors)`);
+      }
+
+      const diags = parseKhiopsErrors(output, doc.uri);
+      outputChannel.appendLine(`[Khiops] Parsed ${diags.length} diagnostic(s)`);
+      khiopsDiags.set(doc.uri, diags);
+
+      resolve();
+    });
+  }));
+}
+
 // ─────────────────────────── Extension activation ───────────────────────────
 export function activate(context: vscode.ExtensionContext): void {
   const provider = vscode.languages.registerCompletionItemProvider(
@@ -715,24 +894,82 @@ export function activate(context: vscode.ExtensionContext): void {
   const diagnostics = vscode.languages.createDiagnosticCollection('kdic');
   context.subscriptions.push(diagnostics);
 
-  for (const doc of vscode.workspace.textDocuments) {
-    if (doc.languageId === 'kdic') { validateDocument(doc, diagnostics); }
+  // ── Khiops native validation on save ──────────────────────────────────
+  const config = vscode.workspace.getConfiguration('kdic');
+  const khiopsEnabled = config.get<boolean>('enableKhiopsValidation', true);
+  const diagSource = config.get<string>('diagnosticSource', 'both');
+  const outputChannel = vscode.window.createOutputChannel('Khiops');
+  context.subscriptions.push(outputChannel);
+  outputChannel.show(true);
+  outputChannel.appendLine(`[Khiops] Extension activated, enableKhiopsValidation=${khiopsEnabled}, diagnosticSource=${diagSource}`);
+
+  const khiopsPath = khiopsEnabled ? findKhiopsBinary(outputChannel) : undefined;
+
+  const useExtension = diagSource === 'extension' || diagSource === 'both' || !khiopsPath;
+  const useKhiops = khiopsPath && (diagSource === 'khiops' || diagSource === 'both');
+
+  if (khiopsEnabled && !khiopsPath) {
+    vscode.window.showWarningMessage(
+      'Khiops binary not found. Using built-in validation. Set "kdic.khiopsPath" in settings.',
+    );
   }
-  let validateTimer: ReturnType<typeof setTimeout> | undefined;
-  context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument(doc => {
+
+  // ── Built-in extension validation ─────────────────────────────────────
+  if (useExtension) {
+    for (const doc of vscode.workspace.textDocuments) {
       if (doc.languageId === 'kdic') { validateDocument(doc, diagnostics); }
-    }),
-    vscode.workspace.onDidChangeTextDocument(e => {
-      if (e.document.languageId === 'kdic') {
-        clearTimeout(validateTimer);
-        validateTimer = setTimeout(() => validateDocument(e.document, diagnostics), 300);
+    }
+    let validateTimer: ReturnType<typeof setTimeout> | undefined;
+    context.subscriptions.push(
+      vscode.workspace.onDidOpenTextDocument(doc => {
+        if (doc.languageId === 'kdic') { validateDocument(doc, diagnostics); }
+      }),
+      vscode.workspace.onDidChangeTextDocument(e => {
+        if (e.document.languageId === 'kdic') {
+          clearTimeout(validateTimer);
+          validateTimer = setTimeout(() => validateDocument(e.document, diagnostics), 300);
+        }
+      }),
+      vscode.workspace.onDidCloseTextDocument(doc => {
+        diagnostics.delete(doc.uri);
+      }),
+    );
+  }
+
+  // ── Khiops native validation ──────────────────────────────────────────
+  if (useKhiops) {
+    outputChannel.appendLine(`[Khiops] Using binary: ${khiopsPath}`);
+    const khiopsDiags = vscode.languages.createDiagnosticCollection('khiops');
+    context.subscriptions.push(khiopsDiags);
+
+    let khiopsTimer: ReturnType<typeof setTimeout> | undefined;
+    context.subscriptions.push(
+      vscode.workspace.onDidSaveTextDocument(doc => {
+        if (doc.languageId === 'kdic') {
+          outputChannel.appendLine(`[Khiops] onDidSave: ${doc.fileName}`);
+          clearTimeout(khiopsTimer);
+          runKhiopsValidation(doc, khiopsPath!, khiopsDiags, outputChannel);
+        }
+      }),
+      vscode.workspace.onDidChangeTextDocument(e => {
+        if (e.document.languageId === 'kdic') {
+          clearTimeout(khiopsTimer);
+          khiopsTimer = setTimeout(() => {
+            runKhiopsValidation(e.document, khiopsPath!, khiopsDiags, outputChannel);
+          }, 1000);
+        }
+      }),
+      vscode.workspace.onDidCloseTextDocument(doc => {
+        khiopsDiags.delete(doc.uri);
+      }),
+    );
+
+    for (const doc of vscode.workspace.textDocuments) {
+      if (doc.languageId === 'kdic' && doc.uri.scheme === 'file') {
+        runKhiopsValidation(doc, khiopsPath!, khiopsDiags, outputChannel);
       }
-    }),
-    vscode.workspace.onDidCloseTextDocument(doc => {
-      diagnostics.delete(doc.uri);
-    }),
-  );
+    }
+  }
 }
 
 export function deactivate(): void {
