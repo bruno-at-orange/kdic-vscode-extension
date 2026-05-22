@@ -37,10 +37,16 @@ Exports all validation logic with no VS Code dependency, so it can be used by bo
 | `PARAM_TYPE_MAP` / `RETURN_TYPE_MAP` | Auto-derived from `DERIVATION_RULES` via `buildTypeMaps()` — **never edit manually** |
 
 `validateDocument()` is a thin wrapper: calls `validate()` from `validator.ts` and converts
-`KdicDiagnostic[]` to `vscode.Diagnostic[]`.
+`KdicDiagnostic[]` to `vscode.Diagnostic[]` (`source: 'kdic'`).
 
-`activate()` registers the completion provider, hover provider, and diagnostic collection.
-Subscribes `validateDocument` to document open / change / save events.
+`activate()` registers completion + hover, then configures diagnostics from:
+- built-in validator (`source: 'kdic'`) on open/change
+- optional native Khiops parser (`source: 'khiops'`) on save/change when binary is available
+
+Native Khiops validation is controlled by settings:
+- `kdic.enableKhiopsValidation`
+- `kdic.khiopsPath`
+- `kdic.diagnosticSource` (`khiops` | `extension` | `both`)
 
 ### `KDIC_TYPES` — order is significant
 
@@ -61,10 +67,11 @@ Defined in `validator.ts`.
 **Pass 1 — block loop** (`while i < text.length`): finds each `{ … }` dictionary block,
 collects variable types into `vars`, then runs four checks:
 
-1. Return-type mismatch (declared type vs. derivation rule return type)
-2. Argument-type mismatch (argument variables vs. `PARAM_TYPE_MAP`)
-3. Key-field type check (fields listed in the dictionary key must be `Categorical`)
-4. Unknown-dictionary check (`Table(X)` / `Entity(X)` must reference a declared dictionary)
+1. Key-field type check (fields listed in the dictionary key must be `Categorical`)
+2. Unknown-dictionary check (`Table(X)` / `Entity(X)` must reference a declared dictionary)
+3. Return-type mismatch (declared type vs. derivation rule return type)
+4. Argument-type mismatch (argument variables vs. `PARAM_TYPE_MAP`)
+5. Undeclared argument variable warning (likely typo in current dictionary scope)
 
 **Pass 2 — line loop** (`for li`): line-by-line grammar validation:
 
@@ -96,6 +103,6 @@ No automated test suite — validate with `test.kdic` in the dev host.
 - Adding or changing validation logic: edit `src/validator.ts` — both the extension and the
   smoke test will pick up the change after recompilation.
 - Diagnostic severity: **Error** for definite violations (type mismatch, missing `;`, unknown
-  reference); **Warning** for unrecognised lines that might be non-kdic content.
+  reference); **Warning** for unrecognised lines and undeclared argument-variable references.
 - Grammar patterns are regexes matched against the trimmed, comment-stripped line. Keep them
   focused — one concern per pattern.

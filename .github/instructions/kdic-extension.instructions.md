@@ -25,6 +25,7 @@ Append one entry to `DERIVATION_RULES`. **No other changes are needed** — `PAR
 - `TypeName argName` → param expected to be `TypeName`
 - bare `argName` (no recognised type prefix) → `'any'` (unchecked)
 - last param `...` → varargs; extra positions beyond the explicit list are unchecked
+- `Block(Type) argName` → parsed as `Block(Type)` (block arguments are not type-checked like scalar args)
 
 ## Adding a type
 
@@ -82,7 +83,22 @@ Insert inside the `for (let li …)` loop in `src/validator.ts`. Useful context 
 | Situation | Severity |
 |---|---|
 | Type mismatch, missing `;`, unknown dictionary, bad key type | `Error` |
-| Line not matching any known grammar pattern | `Warning` |
+| Line not matching any known grammar pattern, undeclared argument variable | `Warning` |
+
+## Native Khiops diagnostics (extension.ts)
+
+When touching validation wiring in `src/extension.ts`, preserve the current split:
+
+- Built-in diagnostics: collection `kdic`, produced by `validateDocument`
+- Native diagnostics: collection `khiops`, produced by `runKhiopsValidation`
+
+Configuration keys controlling behavior:
+
+- `kdic.enableKhiopsValidation`
+- `kdic.khiopsPath`
+- `kdic.diagnosticSource` (`khiops` | `extension` | `both`)
+
+If no binary is found, extension diagnostics must remain available as fallback.
 
 ## Regex tips
 
