@@ -592,6 +592,10 @@ function isDebugTracesEnabled(): boolean {
   return vscode.workspace.getConfiguration('kdic').get<boolean>('enableDebugTraces', false);
 }
 
+function isKhiopsAutoSaveEnabled(): boolean {
+  return vscode.workspace.getConfiguration('kdic').get<boolean>('runKhiopsOnAutoSave', true);
+}
+
 function logKhiopsTrace(outputChannel: vscode.OutputChannel, message: string): void {
   if (isDebugTracesEnabled()) {
     outputChannel.appendLine(message);
@@ -972,7 +976,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Always register listeners and branch on live runtime state.
   let validateTimer: ReturnType<typeof setTimeout> | undefined;
-  let khiopsTimer: ReturnType<typeof setTimeout> | undefined;
+  const saveReasons = new Map<string, vscode.TextDocumentSaveReason>();
 
   const revalidateAllOpenKdicDocuments = (): void => {
     for (const doc of vscode.workspace.textDocuments) {
@@ -984,9 +988,7 @@ export function activate(context: vscode.ExtensionContext): void {
         diagnostics.delete(doc.uri);
       }
 
-      if (runtimeState.useKhiops && runtimeState.khiopsPath && doc.uri.scheme === 'file') {
-        runKhiopsValidation(doc, runtimeState.khiopsPath, khiopsDiags, outputChannel);
-      } else {
+      if (!runtimeState.useKhiops) {
         khiopsDiags.delete(doc.uri);
       }
     }
@@ -995,6 +997,11 @@ export function activate(context: vscode.ExtensionContext): void {
   revalidateAllOpenKdicDocuments();
 
   context.subscriptions.push(
+    vscode.workspace.onWillSaveTextDocument(e => {
+      if (e.document.languageId === 'kdic') {
+        saveReasons.set(e.document.uri.toString(), e.reason);
+      }
+    }),
     vscode.workspace.onDidOpenTextDocument(doc => {
       if (doc.languageId !== 'kdic') { return; }
 
@@ -1004,9 +1011,7 @@ export function activate(context: vscode.ExtensionContext): void {
         diagnostics.delete(doc.uri);
       }
 
-      if (runtimeState.useKhiops && runtimeState.khiopsPath && doc.uri.scheme === 'file') {
-        runKhiopsValidation(doc, runtimeState.khiopsPath, khiopsDiags, outputChannel);
-      } else {
+      if (!runtimeState.useKhiops) {
         khiopsDiags.delete(doc.uri);
       }
     }),
@@ -1020,24 +1025,31 @@ export function activate(context: vscode.ExtensionContext): void {
         diagnostics.delete(e.document.uri);
       }
 
-      clearTimeout(khiopsTimer);
-      if (runtimeState.useKhiops && runtimeState.khiopsPath) {
-        khiopsTimer = setTimeout(() => {
-          runKhiopsValidation(e.document, runtimeState.khiopsPath!, khiopsDiags, outputChannel);
-        }, 1000);
-      } else {
+      if (!runtimeState.useKhiops) {
         khiopsDiags.delete(e.document.uri);
       }
     }),
     vscode.workspace.onDidSaveTextDocument(doc => {
       if (doc.languageId !== 'kdic') { return; }
+
+      const docKey = doc.uri.toString();
+      const saveReason = saveReasons.get(docKey);
+      saveReasons.delete(docKey);
+
+      const runOnAutoSave = isKhiopsAutoSaveEnabled();
+
+      // Run on all saves by default. Set runKhiopsOnAutoSave to false for very large dictionary files.
+      if (!runOnAutoSave && saveReason !== undefined && saveReason !== vscode.TextDocumentSaveReason.Manual) {
+        logKhiopsTrace(outputChannel, `[Khiops] Skip non-manual save (reason=${saveReason}) for: ${doc.fileName}`);
+        return;
+      }
+
       if (!(runtimeState.useKhiops && runtimeState.khiopsPath && doc.uri.scheme === 'file')) {
         khiopsDiags.delete(doc.uri);
         return;
       }
 
       logKhiopsTrace(outputChannel, `[Khiops] onDidSave: ${doc.fileName}`);
-      clearTimeout(khiopsTimer);
       runKhiopsValidation(doc, runtimeState.khiopsPath, khiopsDiags, outputChannel);
     }),
     vscode.workspace.onDidCloseTextDocument(doc => {

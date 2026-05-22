@@ -95,8 +95,10 @@ When touching validation wiring in `src/extension.ts`, preserve the current spli
 Configuration keys controlling behavior:
 
 - `kdic.enableKhiopsValidation`
-- `kdic.khiopsPath`
 - `kdic.diagnosticSource` (`khiops` | `extension` | `both`)
+- `kdic.runKhiopsOnAutoSave`
+- `kdic.enableDebugTraces`
+- `kdic.khiopsPath`
 
 If no binary is found, extension diagnostics must remain available as fallback.
 

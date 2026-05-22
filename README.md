@@ -72,10 +72,11 @@ When a Khiops binary is available, the extension can run native Khiops parsing d
 
 Configuration settings:
 
-- `kdic.enableKhiopsValidation` (`true` by default): enable/disable native Khiops checks
-- `kdic.enableDebugTraces` (`false` by default): show verbose Khiops trace logs in the Output panel
-- `kdic.khiopsPath` (empty by default): explicit path to Khiops binary or to a directory containing it (`khiops` on macOS/Linux, `khiops.cmd` on Windows)
+- `kdic.enableKhiopsValidation` (`true` by default): enable or disable native Khiops checks
 - `kdic.diagnosticSource` (`both` by default): choose `khiops`, `extension`, or `both`
+- `kdic.runKhiopsOnAutoSave` (`true` by default): also run native Khiops on auto-save; set to `false` for very large dictionary files
+- `kdic.enableDebugTraces` (`false` by default): enable verbose Khiops trace logs in the Output panel
+- `kdic.khiopsPath` (empty by default): explicit path to the Khiops binary, or to a directory containing it (`khiops` on macOS/Linux, `khiops.cmd` on Windows)
 
 Binary discovery order:
 

@@ -50,25 +50,25 @@
       }
     ],
     "configuration": {
+      "id": "kdic",
       "title": "Khiops Dictionary",
+      "order": 1,
       "properties": {
         "kdic.khiopsPath": {
           "type": "string",
+          "order": 5,
           "default": "",
           "description": "Explicit path to the Khiops binary. If empty, auto-detects from KHIOPS_HOME/bin/khiops (or KHIOPS_HOME\\bin\\khiops.cmd on Windows) and /usr/bin/khiops on macOS/Linux."
         },
         "kdic.enableKhiopsValidation": {
           "type": "boolean",
+          "order": 1,
           "default": true,
           "description": "Run Khiops on save to validate dictionary files."
         },
-        "kdic.enableDebugTraces": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable verbose Khiops debug traces in the Khiops output channel."
-        },
         "kdic.diagnosticSource": {
           "type": "string",
+          "order": 2,
           "default": "both",
           "enum": [
             "khiops",
@@ -81,6 +81,18 @@
             "Show errors from both Khiops and the built-in extension"
           ],
           "description": "Which diagnostic source to display in the Problems pane."
+        },
+        "kdic.runKhiopsOnAutoSave": {
+          "type": "boolean",
+          "order": 3,
+          "default": true,
+          "description": "Run Khiops validation on auto-save events too. Set to false for very large dictionary files."
+        },
+        "kdic.enableDebugTraces": {
+          "type": "boolean",
+          "order": 4,
+          "default": false,
+          "description": "Enable verbose Khiops debug traces in the Khiops output channel."
         }
       }
     }

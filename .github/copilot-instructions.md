@@ -41,12 +41,14 @@ Exports all validation logic with no VS Code dependency, so it can be used by bo
 
 `activate()` registers completion + hover, then configures diagnostics from:
 - built-in validator (`source: 'kdic'`) on open/change
-- optional native Khiops parser (`source: 'khiops'`) on save/change when binary is available
+- optional native Khiops parser (`source: 'khiops'`) on save (and on auto-save when enabled) when binary is available
 
 Native Khiops validation is controlled by settings:
 - `kdic.enableKhiopsValidation`
-- `kdic.khiopsPath`
 - `kdic.diagnosticSource` (`khiops` | `extension` | `both`)
+- `kdic.runKhiopsOnAutoSave`
+- `kdic.enableDebugTraces`
+- `kdic.khiopsPath`
 
 ### `KDIC_TYPES` — order is significant
 
