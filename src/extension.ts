@@ -608,12 +608,13 @@ function logKhiopsTrace(outputChannel: vscode.OutputChannel, message: string): v
  */
 function findKhiopsBinary(log: vscode.OutputChannel): string | undefined {
   const config = vscode.workspace.getConfiguration('kdic');
-  const explicit = config.get<string>('khiopsPath', '');
+  const explicit = config.get<string>('khiopsPath', '').trim();
   const binaryName = process.platform === 'win32' ? 'khiops.cmd' : 'khiops';
   logKhiopsTrace(log, `[Khiops] kdic.khiopsPath setting = "${explicit}"`);
   logKhiopsTrace(log, `[Khiops] KHIOPS_HOME env = "${process.env['KHIOPS_HOME'] || ''}"`);
   logKhiopsTrace(log, `[Khiops] Expected binary name = "${binaryName}"`);
 
+  // If explicit setting is provided (non-empty), use it exclusively (don't fall back to KHIOPS_HOME)
   if (explicit) {
     // Accept both a direct path to the binary and a directory containing it
     if (fs.existsSync(explicit) && fs.statSync(explicit).isFile()) {
@@ -626,9 +627,11 @@ function findKhiopsBinary(log: vscode.OutputChannel): string | undefined {
       logKhiopsTrace(log, `[Khiops] Found binary: ${bin}`);
       return bin;
     }
-    logKhiopsTrace(log, `[Khiops] Binary not found at setting path`);
+    logKhiopsTrace(log, `[Khiops] Binary not found at explicit setting path (not falling back to KHIOPS_HOME)`);
     return undefined;
   }
+
+  // No explicit setting - try KHIOPS_HOME environment variable
 
   const khiopsHome = process.env['KHIOPS_HOME'];
   if (khiopsHome) {
@@ -760,11 +763,18 @@ function runKhiopsValidation(
         KHIOPS_PROC_NUMBER: '1',
       },
     };
+    
+    // On Windows, .cmd files need shell execution, and paths with spaces must be quoted
+    let commandPath = khiopsPath;
     if (process.platform === 'win32' && path.extname(khiopsPath).toLowerCase() === '.cmd') {
       execOptions.shell = true;
+      // Quote the path if it contains spaces to prevent shell parsing issues
+      if (khiopsPath.includes(' ')) {
+        commandPath = `"${khiopsPath}"`;
+      }
     }
 
-    cp.execFile(khiopsPath, args, execOptions, (err, stdout, stderr) => {
+    cp.execFile(commandPath, args, execOptions, (err, stdout, stderr) => {
       // Clean up temp scenario
       try { fs.unlinkSync(scenarioFile); } catch { /* ignore */ }
 
