@@ -751,7 +751,8 @@ function runKhiopsValidation(
       return;
     }
 
-    const args = ['-b', '-i', scenarioFile, '-e', '/dev/stdout'];
+    const outputDevice = process.platform === 'win32' ? 'CON' : '/dev/stdout';
+    const args = ['-b', '-i', scenarioFile, '-e', outputDevice];
     logKhiopsTrace(outputChannel, `[Khiops] Running: ${khiopsPath} ${args.join(' ')}`);
     logKhiopsTrace(outputChannel, `[Khiops] Scenario file: ${scenarioFile}`);
     logKhiopsTrace(outputChannel, `[Khiops] Dictionary: ${kdicPath}`);
